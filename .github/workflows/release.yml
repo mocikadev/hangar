@@ -108,7 +108,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hangar-${{ matrix.artifact }}
-          path: hangar-${{ matrix.artifact }}*
+          path: |
+            hangar-${{ matrix.artifact }}*
+            hangar-gui-${{ matrix.artifact }}*
           retention-days: 1
 
   release:
