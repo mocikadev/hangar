@@ -1070,7 +1070,7 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
                 spawn_quota(app.tx.clone(), ids);
             }
         }
-        Action::Doctor => match core::doctor::doctor_lines() {
+        Action::Doctor => match core::doctor::doctor_lines(env!("CARGO_PKG_VERSION")) {
             Ok((lines, _)) => app.doctor_view = Some((lines, 0)),
             Err(e) => app.push_log(format!("✗ {}", e)),
         },

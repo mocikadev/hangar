@@ -1,7 +1,9 @@
 //! 离线自检：账号库/权限/逐账号凭据/官方 auth.json 一致性/config 路由/锁。
 /// doctor 自检：纯离线检查，不做任何网络请求与写入
 /// 返回 (展示行, 问题数)，经典循环直接打印，TUI 作覆盖层展示
-pub fn doctor_lines() -> Result<(Vec<String>, usize), String> {
+/// `binary_version` 必须由 cli 层传入自身的 `env!("CARGO_PKG_VERSION")`
+///（本模块在 core 求值会是 core 版本，见 updater 同款陷阱）
+pub fn doctor_lines(binary_version: &str) -> Result<(Vec<String>, usize), String> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -210,10 +212,7 @@ pub fn doctor_lines() -> Result<(Vec<String>, usize), String> {
         warn(&mut out, format!("发现 {} 项需处理", bad));
     }
     // 7. 自身版本与更新检查状态（只读，不联网）
-    ok(
-        &mut out,
-        format!("版本 hangar {}", env!("CARGO_PKG_VERSION")),
-    );
+    ok(&mut out, format!("版本 hangar {}", binary_version.trim()));
     match crate::updater::last_check_secs() {
         Some(ts) => ok(
             &mut out,

@@ -167,7 +167,7 @@ fn warn_if_codex_running() {
 }
 fn doctor() -> Result<(), String> {
     ui::section("自检");
-    let (lines, _) = core::doctor::doctor_lines()?;
+    let (lines, _) = core::doctor::doctor_lines(env!("CARGO_PKG_VERSION"))?;
     for l in lines {
         println!("  {}", l);
     }
