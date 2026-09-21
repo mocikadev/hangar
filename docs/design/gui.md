@@ -20,7 +20,7 @@ TUI 的后台线程+mpsc 模型原样复用。代价（界面朴素、无官方�
 
 ## 3. 架构
 
-新增 `crates/gui`（bin 名 `hangar-gui`），与 `crates/cli` 平级，只依赖
+新增 `crates/gui`（cargo 内 bin 名 `hangar-gui`，见 §8 命名说明），与 `crates/cli` 平级，只依赖
 `hangar-core` 公开 API。UI 线程只渲染，不直接做网络与切换。
 
 ```
@@ -77,6 +77,19 @@ TUI/classic 走 `login_codex()` 零改动；GUI 实现 `LoginHooks`（弹窗版�
 `Account` 结构、`emit`、锁语义、S11 顺序均不碰。
 
 ## 8. 打包分发
+
+### 命名（对外统一叫 hangar）
+
+cargo workspace 内不允许两个 bin 同名（CLI 已占 `hangar`，产物会打架），
+故 cargo 层 bin 名保留 `hangar-gui`，**用户可见处一律叫 hangar**：
+
+- bundler `productName = "hangar"`：macOS 得 `Hangar.app`（Dock/启动台显示 Hangar），
+  Windows NSIS 安装程序与开始菜单项为 hangar、装完 exe 为 `hangar.exe`，
+  Linux `.desktop` 名称 Hangar、可执行仍指向包内二进制。
+- CLI 的 `hangar` 与 GUI 的 `hangar` 安装位置不同（前者在 `~/.local/bin`，
+  后者在系统应用目录），互不覆盖；自升级各自替换各自的 `current_exe`，互不干扰。
+
+### 产物与流水线
 
 - `tauri-bundler` 独立使用（不引 Tauri runtime）：macOS `.dmg`、
   Windows `nsis .exe`、Linux `.deb` + `.AppImage`，Linux 附 `.desktop` 启动器。
