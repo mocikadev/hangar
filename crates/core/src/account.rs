@@ -853,8 +853,18 @@ pub fn fresh_account(account_id: &str) -> Result<Account, String> {
                 file.accounts[idx].email
             ));
         }
+        let before = file.accounts[idx].clone();
         let account = refresh_if_needed(&mut file.accounts[idx], false)?;
         save_accounts_unlocked(&file)?;
+        // 激活账号凭据被轮换后必须同步投影官方 auth.json（S11 先库后官方）：
+        // 只落库会让官方侧持有已作废旧 RT（Codex 下次刷新 401 掉登录），
+        // 且 TUI 周期 harvest 会把官方旧值回灌库形成双向分叉；非激活账号无此耦合
+        let rotated = before.access_token != account.access_token
+            || before.refresh_token != account.refresh_token
+            || before.id_token != account.id_token;
+        if rotated && file.current_account_id.as_deref() == Some(account_id) {
+            project_official_auth(&account)?;
+        }
         Ok(account)
     })
 }
@@ -868,8 +878,16 @@ pub fn force_refresh_account(account_id: &str) -> Result<Account, String> {
             .iter()
             .position(|a| a.id == account_id)
             .ok_or_else(|| format!("账号未找到: {}", account_id))?;
+        let before = file.accounts[idx].clone();
         let account = refresh_if_needed(&mut file.accounts[idx], true)?;
         save_accounts_unlocked(&file)?;
+        // 同 fresh_account：激活账号轮换后投影官方文件，防止分叉（S11 先库后官方）
+        let rotated = before.access_token != account.access_token
+            || before.refresh_token != account.refresh_token
+            || before.id_token != account.id_token;
+        if rotated && file.current_account_id.as_deref() == Some(account_id) {
+            project_official_auth(&account)?;
+        }
         Ok(account)
     })
 }
@@ -924,6 +942,23 @@ fn switch_locked(account_id: &str) -> Result<(), String> {
     // 刷新可能更新了 token，先落盘一次，保证官方写失败/崩溃时库中仍是新 RT
     save_accounts_unlocked(&file)?;
 
+    project_official_auth(&account)?;
+    let codex_home = codex_home()?;
+
+    // OAuth 切号后：重置 config.toml 中的自定义 provider 路由，保证走官方内置链路；
+    // 最佳努力，失败只告警（keychain 同步已并入 project_official_auth，切换/刷新两路共用）
+    reset_oauth_provider_in_config(&codex_home);
+
+    file.current_account_id = Some(account_id.to_string());
+    save_accounts_unlocked(&file)?;
+
+    Ok(())
+}
+
+/// 把账号当前凭据投影到官方 auth.json（merge 写，保留未知顶层字段，对齐 cockpit-tools）。
+/// 切换与刷新两路共用：激活账号凭据轮换后必须同步官方文件（S11：先写库、后写官方）。
+/// 不含 config.toml 的 provider 重置（那是切号语义，同账号刷新无身份变化）。
+fn project_official_auth(account: &Account) -> Result<(), String> {
     let codex_home = codex_home()?;
     std::fs::create_dir_all(&codex_home).map_err(|e| format!("创建 Codex 目录失败: {}", e))?;
 
@@ -934,16 +969,14 @@ fn switch_locked(account_id: &str) -> Result<(), String> {
     let last_refresh_rfc3339 = chrono_rfc3339(last_refresh);
 
     let next_tokens = serde_json::json!({
-        "id_token": account.id_token,
-        "access_token": account.access_token,
+        "id_token": account.id_token.clone(),
+        "access_token": account.access_token.clone(),
         // 官方解析器要求 refresh_token 键必须存在
-        "refresh_token": account.refresh_token,
+        "refresh_token": account.refresh_token.clone(),
         // 未知 account_id 写 null（非 ""），与官方/上游形态一致，避免下游当有效 ID 发出
         "account_id": account.account_id.clone().filter(|s| !s.trim().is_empty()).map(serde_json::Value::String).unwrap_or(serde_json::Value::Null)
     });
 
-    // merge 写：保留官方文件中的未知顶层字段（含 "type"/base_url/agent_identity），
-    // 仅覆盖我们管理的键（对齐 cockpit-tools merge_existing_auth_file_value，避免丢配置）
     let auth_path = codex_home.join("auth.json");
     let mut merged = std::fs::read_to_string(&auth_path)
         .ok()
@@ -976,14 +1009,8 @@ fn switch_locked(account_id: &str) -> Result<(), String> {
     let content = serde_json::to_string_pretty(&serde_json::Value::Object(merged))
         .map_err(|e| format!("序列化 auth.json 失败: {}", e))?;
     atomic_write(&auth_path, &content)?;
-    // OAuth 切号后：重置 config.toml 中的自定义 provider 路由，保证走官方内置链路；
-    // macOS 同步 keychain（官方客户端可能从 keychain 读）。两者最佳努力，失败只告警
-    reset_oauth_provider_in_config(&codex_home);
+    // macOS 同步 keychain（官方客户端可能从 keychain 读），最佳努力，失败只告警
     sync_keychain_best_effort(&codex_home, &auth_path);
-
-    file.current_account_id = Some(account_id.to_string());
-    save_accounts_unlocked(&file)?;
-
     Ok(())
 }
 
