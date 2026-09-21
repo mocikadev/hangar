@@ -5,7 +5,7 @@
 ## 项目概览
 
 **hangar** — OpenAI Codex 多账号管理 CLI/TUI 工具：免重复登录地在多个 ChatGPT 账号间切换，官方 `auth.json` 为唯一权威，本工具负责缓存、收敛与投影。
-当前状态：**主体功能完成**（TUI + 经典双前端、配额、守卫、workspace 重构已落地；见 spec 验收标准）
+当前状态：**v0.3.0 已发布**（TUI + 经典 + egui GUI 三前端、配额、守卫、GUI 打包发版已落地；S1-S12 场景全绿；三平台真机 GUI 冒烟待补，见 docs/design/gui.md 验收标准）
 
 ## 技术栈
 
