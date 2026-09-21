@@ -860,16 +860,14 @@ pub fn fresh_account(account_id: &str) -> Result<Account, String> {
         }
         let before = file.accounts[idx].clone();
         let account = refresh_if_needed(&mut file.accounts[idx], false)?;
-        save_accounts_unlocked(&file)?;
-        // 激活账号凭据被轮换后必须同步投影官方 auth.json（S11 先库后官方）：
-        // 只落库会让官方侧持有已作废旧 RT（Codex 下次刷新 401 掉登录），
-        // 且 TUI 周期 harvest 会把官方旧值回灌库形成双向分叉；非激活账号无此耦合
-        let rotated = before.access_token != account.access_token
-            || before.refresh_token != account.refresh_token
-            || before.id_token != account.id_token;
-        if rotated && file.current_account_id.as_deref() == Some(account_id) {
-            project_official_auth(&account)?;
-        }
+        persist_refreshed_account(
+            &file,
+            account_id,
+            &before,
+            &account,
+            save_accounts_unlocked,
+            project_official_auth,
+        )?;
         Ok(account)
     })
 }
@@ -885,16 +883,39 @@ pub fn force_refresh_account(account_id: &str) -> Result<Account, String> {
             .ok_or_else(|| format!("账号未找到: {}", account_id))?;
         let before = file.accounts[idx].clone();
         let account = refresh_if_needed(&mut file.accounts[idx], true)?;
-        save_accounts_unlocked(&file)?;
-        // 同 fresh_account：激活账号轮换后投影官方文件，防止分叉（S11 先库后官方）
-        let rotated = before.access_token != account.access_token
-            || before.refresh_token != account.refresh_token
-            || before.id_token != account.id_token;
-        if rotated && file.current_account_id.as_deref() == Some(account_id) {
-            project_official_auth(&account)?;
-        }
+        persist_refreshed_account(
+            &file,
+            account_id,
+            &before,
+            &account,
+            save_accounts_unlocked,
+            project_official_auth,
+        )?;
         Ok(account)
     })
+}
+
+/// S11 刷新收口：无论账号是否激活都先落库；只有激活账号发生 token 轮换时才投影官方文件。
+fn persist_refreshed_account<Save, Project>(
+    file: &AccountsFile,
+    account_id: &str,
+    before: &Account,
+    refreshed: &Account,
+    mut save: Save,
+    mut project: Project,
+) -> Result<(), String>
+where
+    Save: FnMut(&AccountsFile) -> Result<(), String>,
+    Project: FnMut(&Account) -> Result<(), String>,
+{
+    save(file)?;
+    let rotated = before.access_token != refreshed.access_token
+        || before.refresh_token != refreshed.refresh_token
+        || before.id_token != refreshed.id_token;
+    if rotated && file.current_account_id.as_deref() == Some(account_id) {
+        project(refreshed)?;
+    }
+    Ok(())
 }
 
 /// 切换账号：用目标账号的 token 覆盖 Codex 目录下的 auth.json
@@ -1207,5 +1228,104 @@ mod tests {
         let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn test_account(id: &str, token: &str) -> Account {
+        Account {
+            id: id.into(),
+            email: format!("{id}@example.com"),
+            access_token: format!("at-{token}"),
+            refresh_token: format!("rt-{token}"),
+            id_token: format!("id-{token}"),
+            expires_at: 1,
+            stale: false,
+            account_id: None,
+            organization_id: None,
+        }
+    }
+
+    #[test]
+    fn refreshed_active_account_is_saved_before_projection() {
+        let before = test_account("active", "old");
+        let refreshed = test_account("active", "new");
+        let file = AccountsFile {
+            accounts: vec![refreshed.clone()],
+            current_account_id: Some("active".into()),
+        };
+        let calls = std::cell::RefCell::new(Vec::new());
+
+        persist_refreshed_account(
+            &file,
+            "active",
+            &before,
+            &refreshed,
+            |_| {
+                calls.borrow_mut().push("save");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("project");
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(*calls.borrow(), ["save", "project"]);
+    }
+
+    #[test]
+    fn refreshed_inactive_account_is_saved_without_projection() {
+        let before = test_account("inactive", "old");
+        let refreshed = test_account("inactive", "new");
+        let file = AccountsFile {
+            accounts: vec![refreshed.clone()],
+            current_account_id: Some("other".into()),
+        };
+        let calls = std::cell::RefCell::new(Vec::new());
+
+        persist_refreshed_account(
+            &file,
+            "inactive",
+            &before,
+            &refreshed,
+            |_| {
+                calls.borrow_mut().push("save");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("project");
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(*calls.borrow(), ["save"]);
+    }
+
+    #[test]
+    fn projection_failure_happens_after_new_tokens_are_saved() {
+        let before = test_account("active", "old");
+        let refreshed = test_account("active", "new");
+        let file = AccountsFile {
+            accounts: vec![refreshed.clone()],
+            current_account_id: Some("active".into()),
+        };
+        let saved_token = std::cell::RefCell::new(String::new());
+
+        let err = persist_refreshed_account(
+            &file,
+            "active",
+            &before,
+            &refreshed,
+            |saved| {
+                *saved_token.borrow_mut() = saved.accounts[0].refresh_token.clone();
+                Ok(())
+            },
+            |_| Err("投影失败".into()),
+        )
+        .unwrap_err();
+
+        assert_eq!(saved_token.borrow().as_str(), "rt-new");
+        assert_eq!(err, "投影失败");
     }
 }

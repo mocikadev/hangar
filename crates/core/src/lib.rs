@@ -4,10 +4,10 @@
 //! - `oauth`    : OAuth PKCE 登录、token 交换/刷新
 //! - `quota`    : wham/usage 配额解析、重置卡（只读）、时间格式化
 //! - `doctor`   : 离线自检（凭据/权限/一致性/锁）
-//! - `login`    : 登录 + 入库 + 切换的组合动作
+//! - `login`    : 登录 + 入库（不自动切换）的组合动作
 //! - `process`  : Codex 进程检测
 //!
-//! 两个前端（crates/cli 的 TUI 与 classic）共享本层全部函数。
+//! 三个用户界面（TUI、classic 与 GUI）共享本层全部函数。
 
 pub mod account;
 pub mod doctor;
