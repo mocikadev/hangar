@@ -281,10 +281,22 @@ pub fn apply_update(info: &ReleaseInfo) -> Result<String, String> {
             format!("移开旧版本失败: {}", e)
         })?;
     }
-    std::fs::rename(&tmp, &exe).map_err(|e| {
+    if let Err(e) = std::fs::rename(&tmp, &exe) {
         let _ = std::fs::remove_file(&tmp);
-        format!("替换新版本失败: {}", e)
-    })?;
+        // Windows 下 exe 可能已被移至 .old：尝试回摆；回摆失败则告知备份位置手动恢复
+        #[cfg(windows)]
+        {
+            let old = old_path_for(&exe);
+            if old.exists() && std::fs::rename(&old, &exe).is_err() {
+                return Err(format!(
+                    "替换新版本失败: {}；旧版备份保留在 {}，请手动恢复",
+                    e,
+                    old.display()
+                ));
+            }
+        }
+        return Err(format!("替换新版本失败: {}", e));
+    }
     Ok(info.version.clone())
 }
 
@@ -333,5 +345,19 @@ mod tests {
     #[test]
     fn corrupt_cache_means_expired() {
         assert!(cache_expired(1_000_000, 0)); // last=0 视为过期走联网
+    }
+
+    #[test]
+    fn sibling_names_keep_dir_and_stem() {
+        // 含空格/中文目录：PathBuf 操作不做字符串拼接
+        let exe = std::path::Path::new("/tmp/我的 目录/hangar");
+        assert_eq!(
+            tmp_path_for(exe).to_string_lossy().as_ref(),
+            "/tmp/我的 目录/hangar.update-tmp"
+        );
+        assert_eq!(
+            old_path_for(exe).to_string_lossy().as_ref(),
+            "/tmp/我的 目录/hangar.old"
+        );
     }
 }
