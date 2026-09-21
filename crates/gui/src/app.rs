@@ -445,30 +445,61 @@ impl App {
     }
 
     fn render_list(&mut self, ui: &mut egui::Ui) {
-        ui.heading(format!("账号 ({})", self.accounts.len()));
+        ui.heading(format!("账号（{}）", self.accounts.len()));
+        ui.add_space(4.0);
         if self.accounts.is_empty() {
-            ui.label("（空）按 添加 入库");
+            ui.weak("（空）点右上「添加」入库");
             return;
         }
         let current = self.current.clone();
+        let selected = self.selected.clone();
         let mut pick: Option<String> = None;
         let mut switch_now = false;
         for a in &self.accounts {
+            let is_current = Some(a.id.as_str()) == current.as_deref();
+            let sel = Some(a.id.as_str()) == selected.as_deref();
             // 行内附配额摘要（有数据才附，无数据不刷"未知"保整洁）
             let summary = quota_summary(self, &a.id);
-            let extra = if summary == "未知" {
-                String::new()
+            let frame_fill = if sel {
+                ui.visuals().selection.bg_fill
+            } else if is_current {
+                ui.visuals().faint_bg_color
             } else {
-                format!(" · {}", summary)
+                ui.visuals().panel_fill
             };
-            let label = format!(
-                "{}{}{}",
-                a.email,
-                account_badges(a, current.as_deref()),
-                extra
-            );
-            let sel = Some(a.id.as_str()) == self.selected.as_deref();
-            let resp = ui.selectable_label(sel, label);
+            let resp = egui::Frame::new()
+                .fill(frame_fill)
+                .inner_margin(egui::Margin::symmetric(10, 8))
+                .corner_radius(6)
+                .stroke(if sel {
+                    ui.visuals().selection.stroke
+                } else {
+                    egui::Stroke::NONE
+                })
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.strong(&a.email);
+                            if is_current {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(0x4c, 0xc9, 0x6b),
+                                    "● 使用中",
+                                );
+                            }
+                            if a.stale {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(0xe5, 0xa5, 0x3d),
+                                    "⚠ 失效",
+                                );
+                            }
+                        });
+                        if summary != "未知" {
+                            ui.weak(&summary);
+                        }
+                    });
+                })
+                .response
+                .interact(egui::Sense::click());
             if resp.clicked() {
                 pick = Some(a.id.clone());
             }
@@ -477,6 +508,7 @@ impl App {
                 pick = Some(a.id.clone());
                 switch_now = true;
             }
+            ui.add_space(4.0);
         }
         if let Some(id) = pick {
             self.selected = Some(id);
@@ -488,36 +520,51 @@ impl App {
 
     fn render_detail(&self, ui: &mut egui::Ui) {
         let Some(a) = self.selected_account().cloned() else {
-            ui.label("左侧选择账号");
+            ui.weak("← 左侧选择账号查看详情");
             return;
         };
+        let is_current = Some(a.id.as_str()) == self.current.as_deref();
         ui.heading(&a.email);
-        ui.label(format!(
-            "状态：{}",
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            if is_current {
+                ui.colored_label(egui::Color32::from_rgb(0x4c, 0xc9, 0x6b), "● 使用中");
+            }
             if a.stale {
-                "⚠ 需重新登录"
-            } else {
-                "正常"
+                ui.colored_label(egui::Color32::from_rgb(0xe5, 0xa5, 0x3d), "⚠ 需重新登录");
             }
-        ));
-        ui.label(format!(
-            "刷新令牌：{}",
-            if a.refresh_token.trim().is_empty() {
-                "缺失（无法自动续期）"
-            } else {
-                "有（可自动续期）"
+            if !is_current && !a.stale {
+                ui.weak("正常");
             }
-        ));
-        ui.separator();
+        });
+        ui.add_space(8.0);
+        egui::Frame::new()
+            .fill(ui.visuals().faint_bg_color)
+            .inner_margin(egui::Margin::same(10))
+            .corner_radius(6)
+            .show(ui, |ui| {
+                ui.label(format!(
+                    "刷新令牌：{}",
+                    if a.refresh_token.trim().is_empty() {
+                        "缺失（无法自动续期）"
+                    } else {
+                        "有（可自动续期）"
+                    }
+                ));
+            });
+        ui.add_space(12.0);
         ui.heading("配额");
         match self.quotas.get(&a.id).cloned() {
             None => {
-                ui.label("尚未查询，按 刷新配额");
+                ui.weak("尚未查询，点「刷新配额」获取");
             }
             Some(q) if q.windows.is_empty() => {
-                ui.label("无可用窗口");
+                ui.weak("无可用窗口");
             }
             Some(q) => {
+                if let Some(plan) = &q.plan {
+                    ui.weak(format!("套餐：{}", plan));
+                }
                 for w in &q.windows {
                     let p = w.window.remaining.unwrap_or(0).clamp(0, 100) as f32 / 100.0;
                     let pct = w
@@ -525,8 +572,27 @@ impl App {
                         .remaining
                         .map(|v| format!("{}%", v))
                         .unwrap_or_else(|| "未知".to_string());
-                    ui.label(format!("{} {}", w.label, pct));
-                    ui.add(egui::ProgressBar::new(p));
+                    ui.horizontal(|ui| {
+                        ui.label(&w.label);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.strong(pct);
+                        });
+                    });
+                    ui.add(
+                        egui::ProgressBar::new(p)
+                            .desired_height(8.0)
+                            .corner_radius(4),
+                    );
+                    if let Some(reset) = w.window.reset_at {
+                        ui.weak(format!(
+                            "重置于 {}",
+                            hangar_core::quota::fmt_ts_local(reset)
+                        ));
+                    }
+                    ui.add_space(6.0);
+                }
+                if let Some(n) = q.reset_available {
+                    ui.weak(format!("重置卡：{} 张", n));
                 }
             }
         }
@@ -568,108 +634,109 @@ pub fn quota_summary(app: &App, id: &str) -> String {
     }
 }
 
-fn account_badges(acc: &Account, current: Option<&str>) -> String {
-    let mut s = String::new();
-    if Some(acc.id.as_str()) == current {
-        s.push_str(" ●使用中");
-    }
-    if acc.stale {
-        s.push_str(" ⚠失效");
-    }
-    s
-}
-
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll();
-        ui.horizontal(|ui| {
-            ui.heading("hangar");
-            ui.separator();
-            let refresh = ui.add_enabled(!self.busy, egui::Button::new("刷新配额"));
-            if refresh.clicked() {
-                let ids = self.pending_quota_ids();
-                if !ids.is_empty() {
-                    self.busy = true;
-                    self.status = "查询配额中…".to_string();
-                    crate::worker::spawn_quota(self.tx.clone(), ids);
-                }
-            }
-            if ui
-                .add_enabled(!self.busy, egui::Button::new("切换"))
-                .clicked()
-            {
-                self.do_switch();
-            }
-            if ui
-                .add_enabled(!self.busy, egui::Button::new("添加"))
-                .clicked()
-            {
-                self.start_login(None);
-            }
-            // 复活仅对选中的失效账号有意义
-            let reauth_target = self.selected.clone().and_then(|id| {
-                self.accounts
-                    .iter()
-                    .find(|a| a.id == id && a.stale)
-                    .map(|a| (a.id.clone(), a.email.clone()))
+        // 底部状态栏固定在窗口底部，主区占满剩余高度
+        egui::containers::panel::Panel::bottom("status_bar").show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.label(if self.status.is_empty() {
+                "就绪"
+            } else {
+                &self.status
             });
-            if ui
-                .add_enabled(
-                    !self.busy && reauth_target.is_some(),
-                    egui::Button::new("复活"),
-                )
-                .clicked()
-            {
-                if let Some(t) = reauth_target {
-                    self.start_login(Some(t));
-                }
-            }
-            if ui
-                .add_enabled(!self.busy, egui::Button::new("删除"))
-                .clicked()
-            {
-                self.ask_delete();
-            }
-            if ui
-                .add_enabled(!self.busy, egui::Button::new("自检"))
-                .clicked()
-            {
-                self.open_doctor();
-            }
-            if ui
-                .add_enabled(!self.busy, egui::Button::new("检查更新"))
-                .clicked()
-            {
-                self.start_update();
-            }
-            if ui
-                .add_enabled(!self.busy, egui::Button::new("关于"))
-                .clicked()
-            {
-                self.dialog = Some(Dialog::About);
-            }
-            if self.busy {
-                ui.spinner();
-            }
+            ui.add_space(2.0);
         });
-        ui.separator();
-        // 主区：左右分栏，各自滚动（面板已移除时代的手动布局）
-        let main_h = (ui.available_height() - 30.0).max(120.0);
-        ui.columns(2, |uis| {
-            egui::ScrollArea::vertical()
-                .id_salt("accounts")
-                .max_height(main_h)
-                .show(&mut uis[0], |ui| self.render_list(ui));
+        egui::containers::panel::Panel::top("toolbar").show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.heading("hangar");
+                ui.weak("Codex 多账号管理");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("关于"))
+                        .clicked()
+                    {
+                        self.dialog = Some(Dialog::About);
+                    }
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("检查更新"))
+                        .clicked()
+                    {
+                        self.start_update();
+                    }
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("自检"))
+                        .clicked()
+                    {
+                        self.open_doctor();
+                    }
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("删除"))
+                        .clicked()
+                    {
+                        self.ask_delete();
+                    }
+                    // 复活仅对选中的失效账号有意义
+                    let reauth_target = self.selected.clone().and_then(|id| {
+                        self.accounts
+                            .iter()
+                            .find(|a| a.id == id && a.stale)
+                            .map(|a| (a.id.clone(), a.email.clone()))
+                    });
+                    if ui
+                        .add_enabled(
+                            !self.busy && reauth_target.is_some(),
+                            egui::Button::new("复活"),
+                        )
+                        .clicked()
+                    {
+                        if let Some(t) = reauth_target {
+                            self.start_login(Some(t));
+                        }
+                    }
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("添加"))
+                        .clicked()
+                    {
+                        self.start_login(None);
+                    }
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("切换"))
+                        .clicked()
+                    {
+                        self.do_switch();
+                    }
+                    let refresh = ui.add_enabled(!self.busy, egui::Button::new("刷新配额"));
+                    if refresh.clicked() {
+                        let ids = self.pending_quota_ids();
+                        if !ids.is_empty() {
+                            self.busy = true;
+                            self.status = "查询配额中…".to_string();
+                            crate::worker::spawn_quota(self.tx.clone(), ids);
+                        }
+                    }
+                    if self.busy {
+                        ui.spinner();
+                    }
+                });
+            });
+            ui.add_space(2.0);
+        });
+        egui::containers::panel::Panel::left("sidebar")
+            .default_size(340.0)
+            .resizable(true)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("accounts")
+                    .auto_shrink(false)
+                    .show(ui, |ui| self.render_list(ui));
+            });
+        egui::containers::panel::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("detail")
-                .max_height(main_h)
-                .show(&mut uis[1], |ui| self.render_detail(ui));
-        });
-        ui.separator();
-        ui.label(if self.status.is_empty() {
-            "就绪"
-        } else {
-            &self.status
+                .auto_shrink(false)
+                .show(ui, |ui| self.render_detail(ui));
         });
 
         if self.busy {
