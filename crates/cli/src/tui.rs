@@ -549,7 +549,11 @@ fn spawn_update(tx: Sender<Ev>) {
     std::thread::spawn(move || {
         crate::ui::set_quiet(true);
         // 网络不持账号锁；失败只进日志，旧版继续可用
-        let res = match core::updater::check_update(true, env!("CARGO_PKG_VERSION")) {
+        let res = match core::updater::check_update(
+            true,
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_NAME"),
+        ) {
             Ok(Some(info)) => core::updater::apply_update(&info).map(Some),
             Ok(None) => Ok(None),
             Err(e) => Err(e),

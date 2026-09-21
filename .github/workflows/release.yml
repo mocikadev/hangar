@@ -17,14 +17,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Check tag matches cli Cargo.toml version
+      - name: Check tag matches cli/gui Cargo.toml versions
         run: |
           TAG="${GITHUB_REF_NAME}"
-          CARGO_VERSION="v$(grep '^version' crates/cli/Cargo.toml | head -1 | cut -d'"' -f2)"
-          if [ "$TAG" != "$CARGO_VERSION" ]; then
-            echo "error: tag '$TAG' does not match crates/cli/Cargo.toml version '$CARGO_VERSION'"
-            exit 1
-          fi
+          for CRATE in crates/cli crates/gui; do
+            CARGO_VERSION="v$(grep '^version' $CRATE/Cargo.toml | head -1 | cut -d'"' -f2)"
+            if [ "$TAG" != "$CARGO_VERSION" ]; then
+              echo "error: tag '$TAG' does not match $CRATE/Cargo.toml version '$CARGO_VERSION'"
+              exit 1
+            fi
+          done
           echo "OK: $TAG"
 
   build:
@@ -77,22 +79,30 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           if [ "${{ matrix.use-cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }}
+            cross build --release --target ${{ matrix.target }} &&
+            cross build --release -p hangar-gui --target ${{ matrix.target }}
           else
-            cargo build --release --target ${{ matrix.target }}
+            cargo build --release --target ${{ matrix.target }} &&
+            cargo build --release -p hangar-gui --target ${{ matrix.target }}
           fi
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+          cargo build --release -p hangar-gui --target ${{ matrix.target }}
 
       - name: Stage artifact (Unix)
         if: runner.os != 'Windows'
-        run: cp target/${{ matrix.target }}/release/hangar hangar-${{ matrix.artifact }}
+        run: |
+          cp target/${{ matrix.target }}/release/hangar hangar-${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/hangar-gui hangar-gui-${{ matrix.artifact }}
 
       - name: Stage artifact (Windows)
         if: runner.os == 'Windows'
-        run: copy target\${{ matrix.target }}\release\hangar.exe hangar-${{ matrix.artifact }}.exe
+        run: |
+          copy target\${{ matrix.target }}\release\hangar.exe hangar-${{ matrix.artifact }}.exe
+          copy target\${{ matrix.target }}\release\hangar-gui.exe hangar-gui-${{ matrix.artifact }}.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -176,7 +176,7 @@ fn doctor() -> Result<(), String> {
 
 fn update_interactive() -> Result<(), String> {
     println!("  {}", ui::action("正在检查更新..."));
-    match core::updater::check_update(true, env!("CARGO_PKG_VERSION")) {
+    match core::updater::check_update(true, env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME")) {
         Ok(Some(info)) => match core::updater::apply_update(&info) {
             Ok(v) => println!(
                 "  {}",

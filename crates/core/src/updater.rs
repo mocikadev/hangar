@@ -21,6 +21,8 @@ pub struct ReleaseInfo {
     pub version: String,
     pub binary_url: String,
     pub checksum_url: String,
+    /// 本平台产物文件名（如 hangar-linux-amd64 / hangar-gui-windows-x86_64.exe）
+    pub asset: String,
 }
 
 /// 当前平台对应的 Release 产物后缀，无支持平台返回 None（调用方直接跳过升级）
@@ -40,11 +42,11 @@ pub fn current_target() -> Option<&'static str> {
     }
 }
 
-fn asset_name_for_target(target: &str) -> String {
+fn asset_name_for_target(binary: &str, target: &str) -> String {
     if cfg!(target_os = "windows") {
-        format!("hangar-{}.exe", target)
+        format!("{}-{}.exe", binary, target)
     } else {
-        format!("hangar-{}", target)
+        format!("{}-{}", binary, target)
     }
 }
 
@@ -114,7 +116,13 @@ fn record_check(now: u64) {
 }
 
 /// 检查更新：`force` 跳过 24h 缓存。网络/解析/限流等任何失败都返回 `Ok(None)`。
-pub fn check_update(force: bool, current_version: &str) -> Result<Option<ReleaseInfo>, String> {
+/// `binary` 为本二进制在 Cargo 中的包名（cli 传 "hangar"，gui 传 "hangar-gui"），
+/// 决定下载哪个 Release 产物；`env!` 在 core 求值不对，故由调用方传入。
+pub fn check_update(
+    force: bool,
+    current_version: &str,
+    binary: &str,
+) -> Result<Option<ReleaseInfo>, String> {
     let target = match current_target() {
         Some(t) => t,
         None => return Ok(None),
@@ -127,7 +135,7 @@ pub fn check_update(force: bool, current_version: &str) -> Result<Option<Release
             }
         }
     }
-    let info = fetch_latest(target, current_version.trim())?;
+    let info = fetch_latest(target, current_version.trim(), binary.trim())?;
     record_check(now);
     Ok(info)
 }
@@ -150,7 +158,11 @@ fn redacted(e: ureq::Error) -> String {
     }
 }
 
-fn fetch_latest(target: &str, current_version: &str) -> Result<Option<ReleaseInfo>, String> {
+fn fetch_latest(
+    target: &str,
+    current_version: &str,
+    binary: &str,
+) -> Result<Option<ReleaseInfo>, String> {
     let url = format!("{GITHUB_API}/repos/{REPO}/releases/latest");
     let mut req = agent(CHECK_CONNECT_TIMEOUT, CHECK_TIMEOUT)
         .get(&url)
@@ -197,7 +209,7 @@ fn fetch_latest(target: &str, current_version: &str) -> Result<Option<ReleaseInf
             }
         })
     };
-    let asset = asset_name_for_target(target);
+    let asset = asset_name_for_target(binary, target);
     let (Some(binary_url), Some(checksum_url)) = (find(&asset), find("SHA256SUMS.txt")) else {
         return Ok(None);
     };
@@ -206,6 +218,7 @@ fn fetch_latest(target: &str, current_version: &str) -> Result<Option<ReleaseInf
         version,
         binary_url,
         checksum_url,
+        asset,
     }))
 }
 
@@ -228,8 +241,8 @@ fn old_path_for(exe: &std::path::Path) -> std::path::PathBuf {
 /// 下载、验 SHA、全自动替换当前二进制。成功返回新版本号；
 /// 任何失败返回 Err 且旧二进制不受影响（调用方继续进 TUI）。
 pub fn apply_update(info: &ReleaseInfo) -> Result<String, String> {
-    let target = current_target().ok_or_else(|| "当前平台不支持自升级".to_string())?;
-    let asset = asset_name_for_target(target);
+    let _ = current_target().ok_or_else(|| "当前平台不支持自升级".to_string())?;
+    let asset = info.asset.clone();
     let client = agent(CHECK_CONNECT_TIMEOUT, DOWNLOAD_TIMEOUT);
 
     let bin_bytes = client
@@ -345,6 +358,20 @@ mod tests {
     #[test]
     fn corrupt_cache_means_expired() {
         assert!(cache_expired(1_000_000, 0)); // last=0 视为过期走联网
+    }
+
+    #[test]
+    fn asset_name_distinguishes_binaries() {
+        // CLI 与 GUI 各下各的包，互不串味
+        let cli = asset_name_for_target("hangar", "linux-amd64");
+        let gui = asset_name_for_target("hangar-gui", "linux-amd64");
+        assert_ne!(cli, gui);
+        assert!(cli.starts_with("hangar-") && !cli.starts_with("hangar-gui"));
+        if cfg!(target_os = "windows") {
+            assert!(cli.ends_with(".exe"));
+        } else {
+            assert!(!cli.ends_with(".exe"));
+        }
     }
 
     #[test]

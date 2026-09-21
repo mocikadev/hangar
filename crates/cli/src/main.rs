@@ -38,7 +38,7 @@ fn main() {
     // Windows 残留 hangar.old 清理（最佳努力，永不报错）
     core::updater::cleanup_pending_old();
     if flags.check_update {
-        match core::updater::check_update(true, env!("CARGO_PKG_VERSION")) {
+        match core::updater::check_update(true, env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME")) {
             Ok(Some(info)) => match core::updater::apply_update(&info) {
                 Ok(v) => {
                     println!("已升级到 {}", v);
@@ -64,7 +64,8 @@ fn main() {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
     if !skip_update {
-        match core::updater::check_update(false, env!("CARGO_PKG_VERSION")) {
+        match core::updater::check_update(false, env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"))
+        {
             Ok(Some(info)) => match core::updater::apply_update(&info) {
                 Ok(v) => {
                     println!("已升级到 {}，请重新运行 hangar 生效", v);

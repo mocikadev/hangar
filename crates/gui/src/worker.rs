@@ -77,7 +77,11 @@ pub fn spawn_switch(tx: Sender<Ev>, id: String) {
 pub fn spawn_update(tx: Sender<Ev>, current_version: String) {
     std::thread::spawn(move || {
         hangar_core::emit::set_quiet(true);
-        let res = match hangar_core::updater::check_update(true, &current_version) {
+        let res = match hangar_core::updater::check_update(
+            true,
+            &current_version,
+            env!("CARGO_PKG_NAME"),
+        ) {
             Ok(Some(info)) => hangar_core::updater::apply_update(&info).map(Some),
             Ok(None) => Ok(None),
             Err(e) => Err(e),
