@@ -1,0 +1,109 @@
+# GUI 版本设计（egui 第三前端）
+
+> 状态：待评审（通过后进入实施计划）
+> 决策：界面层 egui（`eframe`）；打包 `tauri-bundler` 独立使用；后端复用 `hangar-core`
+
+## 1. 目标与非目标
+
+目标：给不懂终端的用户一个双击即用的桌面版，首版能力与 TUI 完全对等
+（切换/添加/复活/删除/配额/自检/检查更新），安装包分发（dmg/nsis/deb）。
+
+非目标：界面美学竞赛、系统托盘常驻、开机自启、通知中心、多语言（中文单语先行）。
+
+## 2. 框架选型结论
+
+egui（eframe）：单二进制 5～10MB，无 webview，Linux 免装 webkit；
+全 Rust 单语言，业务简单（列表+详情+按钮+进度条）几百行搞定；
+TUI 的后台线程+mpsc 模型原样复用。代价（界面朴素、无官方安装包）
+分别用“目标用户要可用而非好看”与 tauri-bundler 覆盖。
+备选 Tauri 仅当用户抱怨界面质感时重启评估，后端 core 不动。
+
+## 3. 架构
+
+新增 `crates/gui`（bin 名 `hangar-gui`），与 `crates/cli` 平级，只依赖
+`hangar-core` 公开 API。UI 线程只渲染，不直接做网络与切换。
+
+```
+crates/gui (bin hangar-gui, eframe)
+  app.rs    App 状态机 + 帧渲染（左列表/右详情配额/底状态行/工具栏/弹窗）
+  worker.rs 后台线程池（切换/配额/登录/升级）+ mpsc 事件回 UI
+  hooks.rs  LoginHooks 的 GUI 实现（弹窗 URL + 粘贴框）
+      │ 仅依赖 core 公开 API
+crates/hangar-core（唯一改动：LoginHooks，见 §7）
+```
+
+## 4. 主窗口布局
+
+- 左列账号列表：email + ●使用中 / ⚠失效徽标；点击选中。
+- 右上详情：令牌有效期、刷新令牌状态、计划、账号状态。
+- 右下配额：窗口剩余进度条 + 重置时间 + 重置卡行（对标 TUI）。
+- 底部状态行：一句话状态（就绪/忙/成功/失败原因），替代日志栏。
+- 顶部工具栏按钮：添加 / 复活 / 删除 / 刷新配额 / 自检 / 检查更新 / 关于。
+- 弹窗四个：添加（含浏览器提示+URL 复制框+回调粘贴框）、删除二次确认、
+  复活（同添加流程换标题）、关于（含版本+检查更新按钮）。
+
+## 5. 线程与数据流
+
+沿用 TUI 模式：事件枚举（SwitchDone/QuotaOne/QuotaDone/UpdateDone/LoginDone），
+UI 线程每帧 `try_recv`；忙时相关按钮置灰 + 进度转圈。
+启动先 `harvest()`；启动后台静默刷一次全量配额；60s 被动收敛（egui 定时重绘触发）。
+
+## 6. 特殊流程
+
+- **OAuth 添加/复活**：后台跑登录流程；需手动粘贴时弹窗给出 URL（复制按钮）+
+  粘贴输入框 + 确认/取消；成功自动关闭并切换，失败状态行显示原因。
+- **自升级**：复用 `core::updater`（24h 缓存、`force` 手动检查、SHA 校验、
+  Unix 原子替换 / Windows `.old` 交换）；与 CLI 差异：下载成功后弹窗
+  “已升级到 x.y.z，点重启生效”，用户确认才 `process::exit(0)`，不静默退出；
+  失败只记状态行，旧版继续可用。
+- **Codex 运行中**：切换/添加成功后若 `codex_process_running()`，弹模态提示
+  “请重启 Codex 生效”，替代终端文字提示。
+- **离线**：任何网络失败静默记状态行，不弹窗打断（手动检查更新除外，如实报错）。
+
+## 7. core 改动（唯一）
+
+`login_codex()` 内手动粘贴回调走 stdin，GUI 无 stdin。抽取：
+
+```rust
+pub trait LoginHooks {
+    fn show_auth_url(&self, url: &str);          // 默认：println
+    fn prompt_callback(&self, state: &str) -> Option<String>; // 默认：stdin 读一行
+}
+pub fn login_codex_with(hooks: &dyn LoginHooks) -> Result<Account, String>;
+pub fn login_codex() -> Result<Account, String>; // 默认 hooks，老行为不变
+```
+
+TUI/classic 走 `login_codex()` 零改动；GUI 实现 `LoginHooks`（弹窗版）。
+`Account` 结构、`emit`、锁语义、S11 顺序均不碰。
+
+## 8. 打包分发
+
+- `tauri-bundler` 独立使用（不引 Tauri runtime）：macOS `.dmg`、
+  Windows `nsis .exe`、Linux `.deb` + `.AppImage`，Linux 附 `.desktop` 启动器。
+- 版本号与 cli 同源（发版一起 bump，tag 校验覆盖 gui 包名）。
+- Release 资产新增 `hangar-gui-{linux-amd64,linux-arm64,macos-amd64,macos-arm64,windows-x86_64}`；
+  `install.sh` 不动（CLI 用户）；GUI 用户从 Release 页下载安装包。
+- CI 增加 `cargo build -p hangar-gui`（Linux 原生， anymore 平台由 release 矩阵覆盖）。
+
+## 9. 测试策略
+
+- egui 无 `TestBackend` 式快照：首版以后台 worker 状态机单测（事件收敛逻辑纯函数化）
+  + core 既有单测 + 三平台手工冒烟（启动/切换/添加/升级/离线）为准。
+- 门禁：`cargo fmt` → `cargo clippy -- -D warnings` → `cargo test` 全绿；
+  真机网络链路由用户回报，不编造。
+
+## 10. 落地顺序
+
+1. core `LoginHooks` 抽取 + 老前端回归绿；
+2. `crates/gui` 骨架（空窗口可启动）+ CI 接入；
+3. 列表/详情/配额只读三件套；
+4. 切换/添加（含弹窗）/复活/删除；
+5. 自检展示/检查更新/关于；
+6. bundler 打包 + 三平台冒烟 + 发版。
+
+## 11. 验收标准
+
+- 三平台安装包双击可装、启动无终端、无需任何命令；
+- 与 TUI 逐项对等操作一遍，结果一致（切换生效、配额数字一致）；
+- 无网络启动 ≤ 超时后必进主窗口；SHA 篡改演练拒绝替换；
+- `fmt/clippy/test` 全绿。
