@@ -24,5 +24,6 @@ pub use account::{
 };
 pub use login::do_login;
 pub use oauth::login_codex;
+pub use oauth::{login_codex_with, LoginHooks};
 pub use process::codex_process_running;
 pub use quota::{fetch_quota_for_account, fmt_countdown, fmt_ts_local, quota_bar, reset_in_secs};

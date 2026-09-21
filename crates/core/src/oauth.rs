@@ -73,17 +73,38 @@ fn bind_callback_server() -> Result<(std::sync::Arc<Server>, u16), String> {
     ))
 }
 
-/// 超时后手动兜底：提示粘贴浏览器地址栏的完整回调 URL，解析 code 并校验 state
-fn prompt_manual_callback(expected_state: &str) -> Option<String> {
-    use std::io::{self, Write};
-    println!("浏览器回调未收到（可能端口/跳转被拦截）。");
-    println!("可将浏览器地址栏的完整回调 URL 粘贴到此处（直接回车放弃）：");
-    print!("回调 URL> ");
-    let _ = io::stdout().flush();
-    let mut line = String::new();
-    if io::stdin().read_line(&mut line).unwrap_or(0) == 0 {
-        return None;
+/// 登录交互钩子：默认 stdin 实现供 TUI/classic；GUI 传自己的弹窗实现。
+/// `prompt_callback` 返回用户粘贴的原始 URL（None=放弃），解析与校验统一在 core。
+pub trait LoginHooks {
+    fn show_auth_url(&self, url: &str);
+    fn prompt_callback(&self, state: &str) -> Option<String>;
+}
+
+/// 终端默认实现：行为与原 `prompt_manual_callback` 逐行一致
+struct StdinHooks;
+
+impl LoginHooks for StdinHooks {
+    fn show_auth_url(&self, url: &str) {
+        println!("{}", url);
     }
+
+    fn prompt_callback(&self, _state: &str) -> Option<String> {
+        use std::io::{self, Write};
+        println!("浏览器回调未收到（可能端口/跳转被拦截）。");
+        println!("可将浏览器地址栏的完整回调 URL 粘贴到此处（直接回车放弃）：");
+        print!("回调 URL> ");
+        let _ = io::stdout().flush();
+        let mut line = String::new();
+        if io::stdin().read_line(&mut line).unwrap_or(0) == 0 {
+            return None;
+        }
+        Some(line)
+    }
+}
+
+/// 超时后手动兜底：经 hooks 取回粘贴的 URL，解析 code 并校验 state
+fn prompt_manual_callback_with(hooks: &dyn LoginHooks, expected_state: &str) -> Option<String> {
+    let line = hooks.prompt_callback(expected_state)?;
     let line = line.trim();
     if line.is_empty() {
         return None;
@@ -91,13 +112,16 @@ fn prompt_manual_callback(expected_state: &str) -> Option<String> {
     match parse_code_from_callback_url(line, expected_state) {
         Ok(code) => Some(code),
         Err(e) => {
-            eprintln!("回调解析失败: {}", e);
+            // GUI 调用前 set_quiet(true) 屏蔽此行（TUI 后台线程同款），对话框内用
+            // 公开的 parse_code_from_callback_url 预检并展示具体错误
+            crate::emit::emit_err(format!("回调解析失败: {}", e));
             None
         }
     }
 }
 
-fn parse_code_from_callback_url(url: &str, expected_state: &str) -> Result<String, String> {
+/// 回调 URL 解析（公开供 GUI 预检输入，规则与主流程共用一份）
+pub fn parse_code_from_callback_url(url: &str, expected_state: &str) -> Result<String, String> {
     let parsed = Url::parse(url.trim())
         .map_err(|e| format!("URL 格式无效（请粘贴 http:// 开头的完整地址）: {}", e))?;
     // 仅接受本地回调地址，防止粘错页面 URL 蒙混过关
@@ -119,9 +143,15 @@ fn parse_code_from_callback_url(url: &str, expected_state: &str) -> Result<Strin
         .ok_or_else(|| "缺少 code 参数".to_string())
 }
 
-/// 执行 OAuth 登录流程（阻塞式）：
+/// 执行 OAuth 登录流程（阻塞式，终端默认交互）：
 /// 打开浏览器 → 监听 1455 回调 → 换取 token → 返回账号
 pub fn login_codex() -> Result<Account, String> {
+    login_codex_with(&StdinHooks)
+}
+
+/// 执行 OAuth 登录流程（阻塞式，交互经 hooks 注入）：
+/// 打开浏览器 → 监听 1455 回调 → 换取 token → 返回账号
+pub fn login_codex_with(hooks: &dyn LoginHooks) -> Result<Account, String> {
     // 1. 生成 PKCE 参数
     let code_verifier = generate_code_verifier();
     let code_challenge = generate_code_challenge(&code_verifier);
@@ -176,7 +206,7 @@ pub fn login_codex() -> Result<Account, String> {
     } else {
         println!("已打开浏览器进行授权，请在 5 分钟内完成登录...");
     }
-    println!("{}", final_url);
+    hooks.show_auth_url(&final_url);
 
     // 5. 等待回调
     // 线程持有一份 Arc，主线程保留原份用于超时后 unblock()。
@@ -265,7 +295,7 @@ pub fn login_codex() -> Result<Account, String> {
         // 唤醒阻塞在 incoming_requests() 的回调线程，先释放端口再提示手动粘贴
         server.unblock();
         let _ = handle.join();
-        if let Some(code) = prompt_manual_callback(&state) {
+        if let Some(code) = prompt_manual_callback_with(hooks, &state) {
             *code_received.lock().unwrap_or_else(|e| e.into_inner()) = Some(code);
             auth_received.store(true, Ordering::SeqCst);
         } else {
@@ -450,6 +480,26 @@ fn get_user_email(access_token: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hooks_reject_wrong_state() {
+        struct StdinHooks;
+        impl LoginHooks for StdinHooks {
+            fn show_auth_url(&self, url: &str) {
+                println!("{}", url);
+            }
+            fn prompt_callback(&self, _state: &str) -> Option<String> {
+                None
+            }
+        }
+        let hooks = StdinHooks;
+        assert!(parse_code_from_callback_url(
+            "http://localhost:1455/auth/callback?code=abc&state=s1",
+            "other"
+        )
+        .is_err());
+        let _ = &hooks as &dyn LoginHooks;
+    }
 
     #[test]
     fn callback_url_requires_localhost_auth_path() {
