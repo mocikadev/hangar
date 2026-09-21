@@ -2,7 +2,13 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 env:
   CARGO_TERM_COLOR: always
 jobs:
@@ -18,33 +24,11 @@ jobs:
       - run: cargo clippy -- -D warnings
       - run: cargo test
   build:
+    # 轻量冒烟即可：重型 5 平台 release 构建只在 tag 触发的 release.yml 里跑
     needs: check
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: x86_64-unknown-linux-musl, runner: ubuntu-latest, use-cross: true }
-          - { target: aarch64-unknown-linux-musl, runner: ubuntu-latest, use-cross: true }
-          - { target: x86_64-apple-darwin, runner: macos-latest, use-cross: false }
-          - { target: aarch64-apple-darwin, runner: macos-latest, use-cross: false }
-          - { target: x86_64-pc-windows-msvc, runner: windows-latest, use-cross: false }
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-      - name: Install cross
-        if: matrix.use-cross
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cross
-      - name: Build (cross)
-        if: matrix.use-cross
-        run: cross build --release --target ${{ matrix.target }}
-      - name: Build (native)
-        if: ${{ !matrix.use-cross }}
-        run: cargo build --release --target ${{ matrix.target }}
+      - run: cargo build
