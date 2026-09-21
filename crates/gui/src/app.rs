@@ -133,7 +133,7 @@ impl App {
                         self.status = if reauth {
                             format!("✅ 已复活并切换到 {}", email)
                         } else {
-                            format!("✅ 已添加并切换到 {}", email)
+                            format!("✅ 已添加账号 {}（未激活，选中后点「切换」）", email)
                         };
                         self.maybe_codex_notice();
                     }

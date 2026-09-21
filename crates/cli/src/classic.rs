@@ -39,7 +39,10 @@ pub fn show_menu_and_handle() -> Result<(), String> {
         "a" | "add" => {
             println!("  {}", ui::action("正在启动 OAuth 登录（将打开浏览器）..."));
             let email = core::do_login()?;
-            println!("  {}", ui::success(&format!("已切换到新账号: {}", email)));
+            println!(
+                "  {}",
+                ui::success(&format!("已添加账号: {}（未激活，输入编号切换）", email))
+            );
             warn_if_codex_running();
         }
         "r" | "reauth" => {

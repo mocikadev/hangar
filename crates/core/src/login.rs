@@ -1,5 +1,5 @@
-//! 登录 + 入库（三元组去重）+ 切换的组合动作，两个前端共用。
-/// OAuth 登录并入库 + 切换（经典循环与 TUI 共用；调用方负责浏览器交互的屏幕形态）
+//! 登录 + 入库（三元组去重），两个前端共用。
+/// 仅添加：OAuth 登录并入库，不切换激活账号（current 与官方 auth.json 均保持原样）
 /// 返回登录邮箱
 pub fn do_login() -> Result<String, String> {
     do_login_with(&crate::oauth::StdinHooks)
@@ -9,7 +9,7 @@ pub fn do_login() -> Result<String, String> {
 pub fn do_login_with(hooks: &dyn crate::oauth::LoginHooks) -> Result<String, String> {
     let account = crate::oauth::login_codex_with(hooks)?;
     let email = account.email.clone();
-    let current_id = crate::account::with_accounts_lock(|| {
+    crate::account::with_accounts_lock(|| {
         let mut file = crate::account::load_accounts()?;
         // 去重：email + account/org 三元组（同邮箱多 org 不合并，老库无三元组时退化为 email）
         if let Some(existing) = file.accounts.iter_mut().find(|a| {
@@ -44,19 +44,13 @@ pub fn do_login_with(hooks: &dyn crate::oauth::LoginHooks) -> Result<String, Str
             if account.organization_id.is_some() {
                 existing.organization_id = account.organization_id.clone();
             }
-            file.current_account_id = Some(existing.id.clone());
         } else {
-            file.current_account_id = Some(account.id.clone());
             file.accounts.push(account.clone());
         }
-        let id = file
-            .current_account_id
-            .clone()
-            .ok_or_else(|| "登录入库后缺失 current_account_id（内部不一致）".to_string())?;
+        // 仅添加不切换：current_account_id 与官方 auth.json 均保持不变，
+        // 激活由用户显式切换（选中回车/点击切换）完成
         crate::account::save_accounts_unlocked(&file)?;
-        Ok(id)
+        Ok(())
     })?;
-    // 登录即切换到新账号
-    crate::account::switch_account(&current_id)?;
     Ok(email)
 }

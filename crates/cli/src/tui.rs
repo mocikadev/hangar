@@ -992,7 +992,7 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
             let r = suspend(term, core::do_login);
             match r {
                 Ok(email) => {
-                    app.push_log(format!("✅ 登录并切换到: {}", email));
+                    app.push_log(format!("✅ 已添加账号: {}（未激活，选中回车切换）", email));
                     if core::codex_process_running() {
                         app.push_log("ℹ 检测到 Codex 正在运行，请重启 Codex 生效".to_string());
                     }
