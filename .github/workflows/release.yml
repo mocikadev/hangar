@@ -133,7 +133,11 @@ jobs:
 
       - name: Create checksums
         working-directory: artifacts
-        run: sha256sum hangar-* *.deb *.rpm *.dmg *.AppImage 2>/dev/null > SHA256SUMS.txt; cat SHA256SUMS.txt
+        run: |
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -printf '%f\0' \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v2
         with:
