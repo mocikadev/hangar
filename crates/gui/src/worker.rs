@@ -24,6 +24,9 @@ pub enum Ev {
         res: Result<String, String>,
     },
     LoginFailed(String),
+    UpdateDone {
+        res: Result<Option<String>, String>,
+    },
 }
 
 /// 对话框 → 后台登录线程的粘贴输入
@@ -67,6 +70,19 @@ pub fn spawn_switch(tx: Sender<Ev>, id: String) {
             .unwrap_or_default();
         let res = hangar_core::account::switch_account(&id);
         let _ = tx.send(Ev::SwitchDone { email, res });
+    });
+}
+
+/// 后台检查更新：`current_version` 由调用方传本二进制版本（gui 包内求值即 gui 版本）
+pub fn spawn_update(tx: Sender<Ev>, current_version: String) {
+    std::thread::spawn(move || {
+        hangar_core::emit::set_quiet(true);
+        let res = match hangar_core::updater::check_update(true, &current_version) {
+            Ok(Some(info)) => hangar_core::updater::apply_update(&info).map(Some),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        };
+        let _ = tx.send(Ev::UpdateDone { res });
     });
 }
 

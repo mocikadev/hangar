@@ -5,11 +5,17 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// 本二进制版本（gui 包内求值；发版与 cli 一起 bump，见 release 流程）
+const GUI_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Clone)]
 pub enum Dialog {
     Add { url: String, error: String },
     ConfirmDelete { email: String },
     Notice(String),
+    About,
+    Doctor(Vec<String>),
+    ConfirmRestart { version: String },
 }
 
 pub struct App {
@@ -140,6 +146,38 @@ impl App {
                 if let Some(Dialog::Add { error, .. }) = self.dialog.as_mut() {
                     *error = e;
                 }
+            }
+            Ev::UpdateDone { res } => {
+                self.busy = false;
+                match res {
+                    Ok(Some(v)) => {
+                        self.dialog = Some(Dialog::ConfirmRestart { version: v });
+                    }
+                    Ok(None) => {
+                        self.status = "已是最新版本".to_string();
+                    }
+                    Err(e) => {
+                        self.status = format!("✗ 更新失败：{}（旧版继续可用）", e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// 手动检查更新（工具栏/关于共用）：后台跑，busy 转圈
+    pub fn start_update(&mut self) {
+        self.busy = true;
+        self.status = "检查更新中…".to_string();
+        crate::worker::spawn_update(self.tx.clone(), GUI_VERSION.to_string());
+    }
+
+    fn open_doctor(&mut self) {
+        match hangar_core::doctor::doctor_lines(GUI_VERSION) {
+            Ok((lines, _)) => {
+                self.dialog = Some(Dialog::Doctor(lines));
+            }
+            Err(e) => {
+                self.status = format!("✗ {}", e);
             }
         }
     }
@@ -332,6 +370,76 @@ impl App {
                     self.cancel_login();
                 }
             }
+            Some(Dialog::About) => {
+                let mut open = true;
+                let mut close = false;
+                let mut update = false;
+                egui::Window::new("关于").open(&mut open).show(ctx, |ui| {
+                    ui.heading("hangar");
+                    ui.label(format!("版本 {}", GUI_VERSION));
+                    ui.label("Codex 多账号管理");
+                    ui.horizontal(|ui| {
+                        if ui.button("检查更新").clicked() {
+                            update = true;
+                        }
+                        if ui.button("关闭").clicked() {
+                            close = true;
+                        }
+                    });
+                });
+                open = open && !close;
+                if update {
+                    self.dialog = None;
+                    self.start_update();
+                } else if !open {
+                    self.dialog = None;
+                }
+            }
+            Some(Dialog::Doctor(lines)) => {
+                let mut open = true;
+                let mut close = false;
+                egui::Window::new("自检").open(&mut open).show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("doctor")
+                        .max_height(400.0)
+                        .show(ui, |ui| {
+                            for l in &lines {
+                                ui.label(l);
+                            }
+                        });
+                    if ui.button("关闭").clicked() {
+                        close = true;
+                    }
+                });
+                open = open && !close;
+                if !open {
+                    self.dialog = None;
+                }
+            }
+            Some(Dialog::ConfirmRestart { version }) => {
+                let mut open = true;
+                let mut close = false;
+                let mut restart = false;
+                egui::Window::new("升级完成")
+                    .open(&mut open)
+                    .show(ctx, |ui| {
+                        ui.label(format!("已升级到 {}，重启生效。", version));
+                        ui.horizontal(|ui| {
+                            if ui.button("立即重启").clicked() {
+                                restart = true;
+                            }
+                            if ui.button("稍后").clicked() {
+                                close = true;
+                            }
+                        });
+                    });
+                open = open && !close;
+                if restart {
+                    std::process::exit(0);
+                } else if !open {
+                    self.dialog = None;
+                }
+            }
         }
     }
 
@@ -521,6 +629,24 @@ impl eframe::App for App {
             {
                 self.ask_delete();
             }
+            if ui
+                .add_enabled(!self.busy, egui::Button::new("自检"))
+                .clicked()
+            {
+                self.open_doctor();
+            }
+            if ui
+                .add_enabled(!self.busy, egui::Button::new("检查更新"))
+                .clicked()
+            {
+                self.start_update();
+            }
+            if ui
+                .add_enabled(!self.busy, egui::Button::new("关于"))
+                .clicked()
+            {
+                self.dialog = Some(Dialog::About);
+            }
             if self.busy {
                 ui.spinner();
             }
@@ -603,5 +729,23 @@ mod tests {
         app.reduce(Ev::LoginFailed("state 不匹配".into()));
         assert!(matches!(app.dialog, Some(Dialog::Add { .. })));
         assert!(app.status.contains("state 不匹配"));
+    }
+
+    #[test]
+    fn no_dialog_when_already_latest() {
+        let mut app = App::default();
+        app.reduce(Ev::UpdateDone { res: Ok(None) });
+        assert!(app.dialog.is_none());
+        assert_eq!(app.status, "已是最新版本");
+    }
+
+    #[test]
+    fn update_failure_keeps_old_version_usable() {
+        let mut app = App::default();
+        app.reduce(Ev::UpdateDone {
+            res: Err("断网".into()),
+        });
+        assert!(app.dialog.is_none());
+        assert!(app.status.contains("旧版继续可用"));
     }
 }
