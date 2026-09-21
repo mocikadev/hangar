@@ -45,7 +45,7 @@ jobs:
             runner: ubuntu-latest
             use-cross: true
             artifact: linux-amd64
-            bundles: "deb appimage"
+            bundles: "deb rpm appimage"
           - target: aarch64-unknown-linux-musl
             runner: ubuntu-latest
             use-cross: true
@@ -121,7 +121,7 @@ jobs:
         shell: bash
         run: |
           BUNDLE="target/${{ matrix.target }}/release/bundle"
-          find "$BUNDLE" -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*-setup.exe" \) -exec cp {} . \;
+          find "$BUNDLE" -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*-setup.exe" \) -exec cp {} . \;
           ls hangar-*
 
       - name: Upload artifact
@@ -131,6 +131,7 @@ jobs:
           path: |
             hangar-${{ matrix.artifact }}*
             *.deb
+            *.rpm
             *.dmg
             *.AppImage
             *-setup.exe
