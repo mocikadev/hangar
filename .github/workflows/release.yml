@@ -27,6 +27,11 @@ jobs:
               exit 1
             fi
           done
+          TAURI_VERSION="v$(grep '"version"' crates/gui/tauri.conf.json | head -1 | cut -d'"' -f4)"
+          if [ "$TAG" != "$TAURI_VERSION" ]; then
+            echo "error: tag '$TAG' does not match tauri.conf.json version '$TAURI_VERSION'"
+            exit 1
+          fi
           echo "OK: $TAG"
 
   build:
@@ -40,22 +45,27 @@ jobs:
             runner: ubuntu-latest
             use-cross: true
             artifact: linux-amd64
+            bundles: "deb appimage"
           - target: aarch64-unknown-linux-musl
             runner: ubuntu-latest
             use-cross: true
             artifact: linux-arm64
+            bundles: "deb appimage"
           - target: x86_64-apple-darwin
             runner: macos-latest
             use-cross: false
             artifact: macos-amd64
+            bundles: "dmg"
           - target: aarch64-apple-darwin
             runner: macos-latest
             use-cross: false
             artifact: macos-arm64
+            bundles: "dmg"
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
             use-cross: false
             artifact: windows-x86_64
+            bundles: "nsis"
 
     runs-on: ${{ matrix.runner }}
     steps:
@@ -94,15 +104,25 @@ jobs:
 
       - name: Stage artifact (Unix)
         if: runner.os != 'Windows'
-        run: |
-          cp target/${{ matrix.target }}/release/hangar hangar-${{ matrix.artifact }}
-          cp target/${{ matrix.target }}/release/hangar-gui hangar-gui-${{ matrix.artifact }}
+        run: cp target/${{ matrix.target }}/release/hangar hangar-${{ matrix.artifact }}
 
       - name: Stage artifact (Windows)
         if: runner.os == 'Windows'
+        run: copy target\${{ matrix.target }}\release\hangar.exe hangar-${{ matrix.artifact }}.exe
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Bundle installers
+        working-directory: crates/gui
+        run: cargo tauri bundle --config tauri.conf.json --bundles ${{ matrix.bundles }} --target ${{ matrix.target }} --ci
+
+      - name: Stage installers
+        shell: bash
         run: |
-          copy target\${{ matrix.target }}\release\hangar.exe hangar-${{ matrix.artifact }}.exe
-          copy target\${{ matrix.target }}\release\hangar-gui.exe hangar-gui-${{ matrix.artifact }}.exe
+          BUNDLE="target/${{ matrix.target }}/release/bundle"
+          find "$BUNDLE" -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*-setup.exe" \) -exec cp {} . \;
+          ls hangar-*
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -110,7 +130,10 @@ jobs:
           name: hangar-${{ matrix.artifact }}
           path: |
             hangar-${{ matrix.artifact }}*
-            hangar-gui-${{ matrix.artifact }}*
+            *.deb
+            *.dmg
+            *.AppImage
+            *-setup.exe
           retention-days: 1
 
   release:
@@ -127,11 +150,15 @@ jobs:
 
       - name: Create checksums
         working-directory: artifacts
-        run: sha256sum hangar-* > SHA256SUMS.txt
+        run: sha256sum hangar-* *.deb *.dmg *.AppImage *-setup.exe 2>/dev/null > SHA256SUMS.txt; cat SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/hangar-*
+            artifacts/*.deb
+            artifacts/*.dmg
+            artifacts/*.AppImage
+            artifacts/*-setup.exe
             artifacts/SHA256SUMS.txt
           generate_release_notes: true

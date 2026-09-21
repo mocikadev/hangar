@@ -140,6 +140,32 @@ pub fn check_update(
     Ok(info)
 }
 
+/// 仅查版本号（GUI 用）：不要求产物存在，调用方拿到新版本后指引用户下载安装包。
+/// 同样任何失败都返回 `Ok(None)`。
+pub fn newer_version_available(current_version: &str) -> Result<Option<(String, String)>, String> {
+    if current_target().is_none() {
+        return Ok(None);
+    }
+    let now = now_secs();
+    if let Some(last) = last_check_secs() {
+        if !cache_expired(now, last) {
+            return Ok(None);
+        }
+    }
+    let current_version = current_version.trim();
+    let tag = match fetch_release_doc(current_version).and_then(|v| fetch_tag(&v)) {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+    let version = tag.trim_start_matches('v').to_string();
+    record_check(now);
+    if is_newer(&version, current_version) {
+        Ok(Some((tag, version)))
+    } else {
+        Ok(None)
+    }
+}
+
 fn agent(connect: Duration, total: Duration) -> ureq::Agent {
     ureq::AgentBuilder::new()
         .timeout_connect(connect)
@@ -158,11 +184,7 @@ fn redacted(e: ureq::Error) -> String {
     }
 }
 
-fn fetch_latest(
-    target: &str,
-    current_version: &str,
-    binary: &str,
-) -> Result<Option<ReleaseInfo>, String> {
+fn fetch_release_doc(current_version: &str) -> Option<serde_json::Value> {
     let url = format!("{GITHUB_API}/repos/{REPO}/releases/latest");
     let mut req = agent(CHECK_CONNECT_TIMEOUT, CHECK_TIMEOUT)
         .get(&url)
@@ -173,17 +195,11 @@ fn fetch_latest(
             req = req.set("Authorization", &format!("Bearer {}", token.trim()));
         }
     }
-    let body = match req.call() {
-        Ok(r) => match r.into_string() {
-            Ok(s) => s,
-            Err(_) => return Ok(None),
-        },
-        Err(_) => return Ok(None),
-    };
-    let v: serde_json::Value = match serde_json::from_str(&body) {
-        Ok(v) => v,
-        Err(_) => return Ok(None),
-    };
+    let body = req.call().ok()?.into_string().ok()?;
+    serde_json::from_str(&body).ok()
+}
+
+fn fetch_tag(v: &serde_json::Value) -> Option<String> {
     let tag = v
         .get("tag_name")
         .and_then(|x| x.as_str())
@@ -191,8 +207,24 @@ fn fetch_latest(
         .trim()
         .to_string();
     if tag.is_empty() {
-        return Ok(None);
+        None
+    } else {
+        Some(tag)
     }
+}
+
+fn fetch_latest(
+    target: &str,
+    current_version: &str,
+    binary: &str,
+) -> Result<Option<ReleaseInfo>, String> {
+    let current_version = current_version.trim();
+    let Some(v) = fetch_release_doc(current_version) else {
+        return Ok(None);
+    };
+    let Some(tag) = fetch_tag(&v) else {
+        return Ok(None);
+    };
     let version = tag.trim_start_matches('v').to_string();
     if !is_newer(&version, current_version) {
         return Ok(None);

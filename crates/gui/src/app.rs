@@ -8,6 +8,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// 本二进制版本（gui 包内求值；发版与 cli 一起 bump，见 release 流程）
 const GUI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// GUI 下载页（安装包获取地址）
+const RELEASES_URL: &str = "https://github.com/mocikadev/hangar/releases/latest";
+
 #[derive(Clone)]
 pub enum Dialog {
     Add { url: String, error: String },
@@ -15,7 +18,7 @@ pub enum Dialog {
     Notice(String),
     About,
     Doctor(Vec<String>),
-    ConfirmRestart { version: String },
+    UpdateAvailable { version: String },
 }
 
 pub struct App {
@@ -151,7 +154,7 @@ impl App {
                 self.busy = false;
                 match res {
                     Ok(Some(v)) => {
-                        self.dialog = Some(Dialog::ConfirmRestart { version: v });
+                        self.dialog = Some(Dialog::UpdateAvailable { version: v });
                     }
                     Ok(None) => {
                         self.status = "已是最新版本".to_string();
@@ -416,27 +419,25 @@ impl App {
                     self.dialog = None;
                 }
             }
-            Some(Dialog::ConfirmRestart { version }) => {
+            Some(Dialog::UpdateAvailable { version }) => {
                 let mut open = true;
                 let mut close = false;
-                let mut restart = false;
-                egui::Window::new("升级完成")
+                egui::Window::new("发现新版本")
                     .open(&mut open)
                     .show(ctx, |ui| {
-                        ui.label(format!("已升级到 {}，重启生效。", version));
+                        ui.label(format!("新版本 {} 可下载，请安装新版安装包升级。", version));
                         ui.horizontal(|ui| {
-                            if ui.button("立即重启").clicked() {
-                                restart = true;
-                            }
-                            if ui.button("稍后").clicked() {
-                                close = true;
+                            ui.label(RELEASES_URL);
+                            if ui.button("复制链接").clicked() {
+                                ui.ctx().copy_text(RELEASES_URL.to_string());
                             }
                         });
+                        if ui.button("关闭").clicked() {
+                            close = true;
+                        }
                     });
                 open = open && !close;
-                if restart {
-                    std::process::exit(0);
-                } else if !open {
+                if !open {
                     self.dialog = None;
                 }
             }
@@ -747,5 +748,15 @@ mod tests {
         });
         assert!(app.dialog.is_none());
         assert!(app.status.contains("旧版继续可用"));
+    }
+
+    #[test]
+    fn newer_version_opens_download_dialog() {
+        // GUI 只发安装包：有新版弹下载指引，不自动替换
+        let mut app = App::default();
+        app.reduce(Ev::UpdateDone {
+            res: Ok(Some("0.4.0".into())),
+        });
+        assert!(matches!(app.dialog, Some(Dialog::UpdateAvailable { .. })));
     }
 }

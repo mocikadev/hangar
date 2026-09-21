@@ -26,7 +26,7 @@ irm https://raw.githubusercontent.com/mocikadev/hangar/main/install.ps1 | iex
 
 ### 桌面版（GUI）
 
-同样在 [Releases](https://github.com/mocikadev/hangar/releases) 页下载 `hangar-gui-*`（如 `hangar-gui-linux-amd64`），Linux/macOS 加执行权限后双击运行，能力与命令行版一致。正式安装包（dmg/exe/deb）后续提供。
+在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（Linux `.deb` / `.AppImage`、macOS `.dmg`、Windows 安装程序），装完从应用列表启动 hangar，能力与命令行版一致，更新也在应用内提示后手动装新包。
 
 ### 更新
 
