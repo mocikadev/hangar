@@ -1,6 +1,6 @@
 # GUI 版本设计（egui 第三前端）
 
-> 状态：待评审（通过后进入实施计划）
+> 状态：已实施；v0.4.0 收口 Linux/macOS，Windows 安装包与真机验收延期
 > 决策：界面层 egui（`eframe`）；打包 `tauri-bundler` 独立使用；后端复用 `hangar-core`
 
 ## 1. 目标与非目标
@@ -8,7 +8,7 @@
 目标：给不懂终端的用户一个双击即用的桌面版，首版能力与 TUI 完全对等
 （切换/添加/复活/删除/配额/自检/检查更新），安装包分发（dmg/nsis/deb）。
 
-非目标：界面美学竞赛、系统托盘常驻、开机自启、通知中心、多语言（中文单语先行）。
+非目标：界面美学竞赛、开机自启、通知中心、多语言（中文单语先行）。系统托盘已纳入正式范围。
 
 ## 2. 框架选型结论
 
@@ -28,6 +28,7 @@ crates/gui (bin hangar-gui, eframe)
   app.rs    App 状态机 + 帧渲染（左列表/右详情配额/底状态行/工具栏/弹窗）
   worker.rs 后台线程池（切换/配额/登录/升级）+ mpsc 事件回 UI
   hooks.rs  LoginHooks 的 GUI 实现（弹窗 URL + 粘贴框）
+  tray.rs   Linux SNI / Windows 与 macOS 原生托盘
       │ 仅依赖 core 公开 API
 crates/hangar-core（唯一改动：LoginHooks，见 §7）
 ```
@@ -51,7 +52,7 @@ UI 线程每帧 `try_recv`；忙时相关按钮置灰 + 进度转圈。
 ## 6. 特殊流程
 
 - **OAuth 添加/复活**：后台跑登录流程；需手动粘贴时弹窗给出 URL（复制按钮）+
-  粘贴输入框 + 确认/取消；成功自动关闭并切换，失败状态行显示原因。
+  粘贴输入框 + 确认/取消；添加成功仅入库不切换，复活成功原位更新并切换，失败状态行显示原因。
 - **自升级**：GUI 走安装包分发，应用内不自动替换二进制。复用 `core::updater`
   的版本检查（`newer_version_available`，24h 缓存、静默失败逻辑不变），
   发现新版弹“去下载页下载安装包”指引（含链接复制），用户手动装新包；
@@ -59,6 +60,7 @@ UI 线程每帧 `try_recv`；忙时相关按钮置灰 + 进度转圈。
 - **Codex 运行中**：切换/添加成功后若 `codex_process_running()`，弹模态提示
   “请重启 Codex 生效”，替代终端文字提示。
 - **离线**：任何网络失败静默记状态行，不弹窗打断（手动检查更新除外，如实报错）。
+- **系统托盘**：账号菜单复用 GUI 守卫；Linux 已验证。macOS 红色关闭事件必须在 eframe 的 `logic()` 阶段取消（窗口不可见时可能不执行 `ui()`），随后切换为 `Accessory`、隐藏窗口与 Dock；从托盘恢复时切回 `Regular` 并重显 Dock 与窗口。Windows 保留托盘恢复入口。
 
 ## 7. core 改动（唯一）
 
@@ -91,12 +93,11 @@ cargo workspace 内不允许两个 bin 同名（CLI 已占 `hangar`，产物会�
 
 ### 产物与流水线
 
-- `tauri-bundler` 独立使用（不引 Tauri runtime）：macOS `.dmg`、
-  Windows `nsis .exe`、Linux `.deb` + `.AppImage`，Linux 附 `.desktop` 启动器。
+- `tauri-bundler` 独立使用（不引 Tauri runtime）：macOS `.dmg`、Linux `.deb` / `.rpm` / `.AppImage`，Linux 附 `.desktop` 启动器；Windows `nsis .exe` 配置保留但不进入 v0.4.0 Release。
 - 版本号与 cli 同源（发版一起 bump，tag 校验覆盖 gui 包名）。
-- Release 资产新增 `hangar-gui-{linux-amd64,linux-arm64,macos-amd64,macos-arm64,windows-x86_64}`；
+- v0.4.0 Release 资产覆盖 `linux-amd64`、`linux-arm64`、`macos-amd64`、`macos-arm64`；Windows 资产延期；
   `install.sh` 不动（CLI 用户）；GUI 用户从 Release 页下载安装包。
-- CI 增加 `cargo build -p hangar-gui`（Linux 原生， anymore 平台由 release 矩阵覆盖）。
+- CI 在 Linux、macOS、Windows 执行 GUI 构建，release 矩阵负责各平台正式产物。
 
 ## 9. 测试策略
 
@@ -116,7 +117,7 @@ cargo workspace 内不允许两个 bin 同名（CLI 已占 `hangar`，产物会�
 
 ## 11. 验收标准
 
-- 三平台安装包双击可装、启动无终端、无需任何命令；
+- Linux/macOS 安装包可安装、启动无终端、无需任何命令；Windows 安装包与真机验收延期，不阻塞 v0.4.0；
 - 与 TUI 逐项对等操作一遍，结果一致（切换生效、配额数字一致）；
 - 无网络启动 ≤ 超时后必进主窗口；SHA 篡改演练拒绝替换；
 - `fmt/clippy/test` 全绿。

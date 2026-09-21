@@ -1,14 +1,14 @@
 # 版本发布与自升级机制设计（update-mechanism）
 
-> 状态：待评审（通过后进入实施计划）
+> 状态：已实施并随 v0.3.0/v0.3.1 发版验证；v0.4.0 补齐 RPM 与跨平台门禁，本轮发布范围收窄为 Linux/macOS
 > 对标：`mocika-skills-cli`（`skm`）的 CI 打包 + 自升级链路，按 hangar 约束裁剪
-> 远端：`git@github.com:mocikadev/hangar.git`（新建，待首次推送）
+> 远端：`git@github.com:mocikadev/hangar.git`
 
 ## 1. 背景与目标
 
 hangar 当前无版本发布流程、无升级能力，用户只能本地 `cargo build`。目标是建立闭环：
 
-1. 打 tag 即自动产出 5 平台二进制 + `SHA256SUMS.txt` 的 GitHub Release；
+1. 打 tag 自动产出本轮 Linux/macOS 四个 target 的二进制、GUI 安装包与 `SHA256SUMS.txt`；Windows 产物延期；
 2. `hangar` 启动时自动检查升级（24h 缓存节流），有新版自动升完退出；
 3. TUI 命令面板 / classic 菜单各一个手动“检查更新”入口，行为对等；
 4. 离线/限流/失败时永远静默放行，不阻塞正常使用。
@@ -26,16 +26,15 @@ hangar 当前无版本发布流程、无升级能力，用户只能本地 `cargo
 
 新增两个 workflow（内容结构与 skm 一致，仅二进制名/产物名替换）：
 
-- `.github/workflows/ci.yml`：`cargo fmt --check` + `cargo clippy -- -D warnings` + `cargo test`，再加 5 target 编译矩阵（与 release.yml 同矩阵，只编不发布）。
-- `.github/workflows/release.yml`：仅 `v*` tag 触发 → verify 版本一致性 → 5 平台构建：
+- `.github/workflows/ci.yml`：Linux/macOS/Windows 执行 clippy/test/GUI build，Windows 仅作代码兼容门禁、不产出 v0.4.0 Release 资产。
+- `.github/workflows/release.yml`：仅 `v*` tag 触发 → verify 版本一致性 → 本轮四个 target 构建：
   - `x86_64-unknown-linux-musl`（cross）→ `hangar-linux-amd64`
   - `aarch64-unknown-linux-musl`（cross）→ `hangar-linux-arm64`
   - `x86_64-apple-darwin` → `hangar-macos-amd64`
   - `aarch64-apple-darwin` → `hangar-macos-arm64`
-  - `x86_64-pc-windows-msvc` → `hangar-windows-x86_64.exe`
   → `SHA256SUMS.txt` → `softprops/action-gh-release` 发 Release。
 
-`install.sh` / `install.ps1`：照抄 skm（含中英双语、SHA256 校验、PATH 提示），替换 `REPO=mocikadev/hangar`、`BINARY=hangar`；Windows 产物名 `hangar-windows-x86_64.exe`。
+`install.sh` 继续服务 Linux/macOS。`install.ps1` 与 Windows target 映射保留供后续恢复发布，但 v0.4.0 的 latest Release 不包含 Windows 资产，README 不再引导用 latest 安装 Windows 版本。
 
 ## 4. `core::updater` 模块设计（零新依赖）
 
@@ -95,13 +94,14 @@ pub fn last_check_secs() -> Option<u64>  // 读缓存，供 doctor 展示
 约束：检查与下载都不持账号锁；错误输出走纯文本 `eprintln`（main 层允许，业务层仍走 `emit`）；
 升级流程与 harvest/switch 无交叉，S11 顺序不受影响。
 
-## 6. 双前端对等
+## 6. 三前端对等
 
 - TUI（`tui.rs`）：`Action` 新增 `Update`（命令面板“检查更新”，hint“检查并升级到最新版”）；
   后台线程执行 `check_update(true)+apply_update`，经 `Ev::UpdateDone{res}` 回主线程；
   `busy` spinner 复用现有；成功日志“✅ 已升级到 x.y.z，请重启 hangar 生效”，失败“✗ 更新失败：原因（旧版继续可用）”；不自动退出。
 - classic（`classic.rs`）：新增 `update` 命令同语义（`u` 已被配额占用，用全字 `update`）。
 - doctor（`doctor.rs`）：加两行——当前版本（`env!`）、上次检查时间（`last_check_secs` 经 `fmt_ts_local`，无缓存显示“尚未检查”）。
+- GUI：只检查版本并引导下载对应安装包，不在运行中直接替换已安装应用。
 
 ## 7. 安全声明
 

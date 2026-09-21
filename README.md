@@ -1,6 +1,6 @@
 # hangar
 
-> **Codex 多账号管理工具**：免重复登录，秒级切换，TUI 仪表盘。
+> **Codex 多账号管理工具**：免重复登录，秒级切换，CLI/TUI/GUI 三种界面。
 
 在多个 ChatGPT 账号之间换来换去，每次都要重新走一遍浏览器登录？hangar 把登录态缓存到本地，切换账号秒级生效，令牌被官方轮换后自动同步回来。
 
@@ -13,12 +13,9 @@
 curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | bash
 ```
 
-```powershell
-# Windows
-irm https://raw.githubusercontent.com/mocikadev/hangar/main/install.ps1 | iex
-```
-
 安装脚本自动识别平台、校验 SHA256、把 `hangar` 放到 `~/.local/bin`。
+
+> Windows 的 v0.4.0 二进制与 GUI 安装包本轮不发布；请勿用 `latest` 安装脚本获取该版本。
 
 ### 手动安装
 
@@ -26,7 +23,7 @@ irm https://raw.githubusercontent.com/mocikadev/hangar/main/install.ps1 | iex
 
 ### 桌面版（GUI）
 
-在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（Linux `.deb` / `.AppImage`、macOS `.dmg`、Windows 安装程序），装完从应用列表启动 hangar，能力与命令行版一致，更新也在应用内提示后手动装新包。
+在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（v0.4.0 提供 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`；Windows GUI 资产延期），装完从应用列表启动 hangar，能力与命令行版一致，更新也在应用内提示后手动装新包。
 
 ### 更新
 
@@ -36,7 +33,7 @@ irm https://raw.githubusercontent.com/mocikadev/hangar/main/install.ps1 | iex
 
 ## 快速上手
 
-1. 运行 `hangar`，按 `:` →「添加账号」→ 浏览器完成一次 ChatGPT 登录。
+1. 运行 `hangar`，按 `:` →「添加账号」→ 浏览器完成一次 ChatGPT 登录；添加后再显式选择账号切换，不会自动覆盖当前登录态。
 2. 已经在 Codex 里登过？什么都不用做——启动时自动识别并入库。
 3. 每个账号重复步骤 1，之后切换全是秒级：选中回车即切。
 
@@ -52,7 +49,8 @@ irm https://raw.githubusercontent.com/mocikadev/hangar/main/install.ps1 | iex
 
 - **配额仪表盘**：每账号剩余额度、具体重置时间（本地时区）、重置卡数量。
 - **自检**：一键检查账号状态、文件权限、官方登录一致性。
-- **双界面**：默认全屏 TUI；管道/无终端环境自动回退经典菜单（`--classic` 可强制）。
+- **三种界面**：默认全屏 TUI；管道/无终端环境自动回退经典菜单（`--classic` 可强制）；桌面版提供 GUI 与系统托盘。
+- **托盘切换**：GUI 关闭主窗口后可驻留系统托盘，从账号菜单快速切换并重新显示窗口。
 
 ## 使用
 
@@ -96,14 +94,20 @@ hangar --check-update  # 检查并升级
 | 平台 | 状态 | 说明 |
 |------|------|------|
 | Linux x86_64 / ARM64 | ✅ | 全功能 |
-| macOS Intel / Apple 芯片 | ✅ | 含钥匙串快照同步 |
-| Windows x86_64 | ✅ | 自升级自动替换，无需手动操作 |
+| macOS Intel / Apple 芯片 | ✅ | 含钥匙串快照同步；v0.4.0 托盘/Dock 行为验收中 |
+| Windows x86_64 | ⏸ | CLI 代码保留并由 CI 检查；v0.4.0 GUI 安装包与真机验收延期 |
 
 ## 安全提示
 
 账号凭据明文存于本机 `~/.hangar/`（靠系统文件权限保护，仅自己可读写），与官方 Codex 客户端一致。多用户共用的机器请谨慎使用；上报问题前请隐去邮箱和令牌。
 
 ## 常见问题
+
+**Q：为什么 GUI 里没有 CLI 已添加的账号？**
+正常安装的 GUI 与 CLI 都读取 `~/.hangar/accounts.json`，不会各存一份；`CODEX_HOME` 只决定官方 Codex 的 `auth.json` 目录。如果是开发或测试启动，请检查是否给 GUI 设置了不同的 `HOME`。GUI 的「自检」会显示实际账号库和 Codex 目录，便于核对。
+
+**Q：macOS 提示无法验证开发者或阻止首次打开？**
+当前 DMG 使用 ad-hoc 签名但尚未 Apple 公证。若系统阻止首次启动，请在“系统设置 → 隐私与安全性”中确认打开；正式 Developer ID 签名与公证完成前，不应把安装包描述为已通过 Gatekeeper。
 
 **Q：切换后 Codex 没生效？**
 Codex 进程内存中还是旧凭据，重启 Codex 即可（工具会检测并提示）。

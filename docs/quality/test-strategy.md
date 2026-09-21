@@ -2,8 +2,9 @@
 
 ## 现状
 
-- 20 个单测（hangar-core 15 + cli 5），全部模块内 `#[cfg(test)]`，`cargo test` 单命令运行
-- 无 CI、无集成测试目录；端到端依赖 tmux 真机冒烟（人工）
+- v0.4.0 当前为 48 个单测（hangar-core 28 + cli 7 + GUI 13），`cargo test` 单命令运行
+- GitHub Actions 在 Linux/macOS/Windows 跑 clippy/test/GUI build，Linux 额外执行 fmt 门禁
+- 无独立集成测试目录；端到端依赖 TUI tmux 冒烟与 GUI 三平台真机验收
 
 ## 分层测试策略
 
@@ -13,6 +14,7 @@
 | 文件 I/O（原子写/备份/权限/锁） | 临时目录真实读写断言（如 `atomic_write_keeps_backup_private`） | core account.rs |
 | TUI 渲染 | `ratatui::backend::TestBackend` 快照断言 | cli tui.rs |
 | 前端分发/守卫逻辑 | 构造 `App` 假数据直接断言（如 `palette_visible` 过滤） | cli tui.rs |
+| GUI reducer/托盘守卫 | 构造 `App`/事件直接断言，不启动窗口 | gui app.rs / tray.rs |
 | 端到端 | tmux 真机冒烟：`send-keys` + `capture-pane -p` 验证关键行 | 人工/会话内 |
 | 真实凭据链路 | 用户真机操作回报输出（登录/刷新/配额成功路径不可离线模拟） | 用户协同 |
 
@@ -27,5 +29,6 @@
 
 - [ ] `cargo fmt --check && cargo clippy -- -D warnings && cargo test` 全绿
 - [ ] 新行为有对应断言（不是只跑旧测试）
-- [ ] TUI 与 classic 双前端行为一致（新增能力两边都暴露）
+- [ ] TUI、classic、GUI 三前端行为一致；平台专属能力有明确设计与验收
 - [ ] 真机冒烟已做并声明覆盖范围（验了什么/没验什么）
+- [ ] Linux/macOS/Windows 的 `cfg` 分支至少在对应 runner 完成 clippy/build

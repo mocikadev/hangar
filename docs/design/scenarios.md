@@ -4,7 +4,7 @@
 
 ```
 hangar/
-├── Cargo.toml            # [workspace]：core + cli，统一依赖版本，release 优化
+├── Cargo.toml            # [workspace]：core + cli + gui，统一依赖版本，release 优化
 └── crates/
     ├── core/             # hangar-core（库）：业务层，UI 无关
     │   └── src/
@@ -15,12 +15,13 @@ hangar/
     │       ├── login.rs    # 登录+入库+切换组合动作
     │       ├── process.rs  # Codex 进程检测
     │       └── emit.rs     # 输出总线 + 线程级静默（TUI 用）
-    └── cli/              # hangar（bin）：两个前端共享 core
+    ├── cli/              # hangar（bin）：TUI + classic 共享 core
         └── src/
             ├── main.rs     # 入口：TUI / classic 分发
             ├── tui.rs      # 全屏 TUI（ratatui）
             ├── classic.rs  # 经典菜单（非 TTY / --classic 回退）
             └── ui.rs       # ANSI 样式（经典模式用）
+    └── gui/              # hangar-gui（bin）：egui 主窗口 + worker + 系统托盘
 
 扩展方向：新增前端（守护进程/HTTP API）→ 新 crate 依赖 core 即可；
 支持其他 AI CLI → core 增加 provider 抽象。
@@ -58,7 +59,7 @@ hangar 是**按需运行的 CLI**（每次调用存活几秒），没有常驻�
 
 | # | 场景 | 风险 | 方案 | 状态 |
 |---|------|------|------|------|
-| S1 | 登录新账号 | 无（全新凭据） | 现有 OAuth 流程，登录即切换 | ✅ 已有 |
+| S1 | 登录新账号 | 自动切换会意外覆盖当前官方登录态 | OAuth 完成后仅入库，不改 current/auth.json；用户显式选择后切换 | ✅ 已实现 |
 | S2 | Codex 长时间运行后，用户切回该账号 | 库中 RT 已被官方轮换 | **每次操作前 harvest**（读官方 auth.json，按 id_token 的 email 归属，采纳更新的 token 回存库） | ✅ 已实现 |
 | S3 | 切换到长期未用的账号，AT 过期 | AT 失效 | refresh 链路：过期/5min 内将过期 → 用 harvest 后的最新 RT 静默刷新 → 回存 | ✅ 已实现 |
 | S4 | refresh_token 也失效（服务端撤销/轮换链断裂） | 静默刷新 401 | 标 stale + 拒绝污染官方 + `r` 定向复活（原位覆盖，邮箱Mismatch拒绝） | ✅ 已实现 |
@@ -68,7 +69,7 @@ hangar 是**按需运行的 CLI**（每次调用存活几秒），没有常驻�
 | S8 | 多终端/手动拷贝 accounts.json 合并 | 同 email 两条记录 | 按 email+account/org 三元组去重（老库退化为 email） | ✅ 已实现 |
 | S9 | 切换发生在 Codex 正在运行时 | 我们覆盖后 Codex 又回写旧 token，或内存凭据打架 | `pgrep/ps/tasklist` 多模式检测（排除自身），提示重启生效 | ✅ 已实现 |
 | S10 | 时钟偏差导致误判过期 | 提前刷/漏刷 | skew 阈值 300s 已覆盖秒级偏差；不做 NTP 级处理 | ✅ 已覆盖 |
-| S11 | 我们刷新成功但写库前崩溃 | 新 RT 丢失（旧 RT 已被服务端作废） | 刷新后**立即先写库再写官方文件**；且 token 端点允许旧 RT 有宽限期（OpenAI RT 旋转有 reuse grace），风险可接受 | ✅ 已按此顺序 |
+| S11 | 我们刷新成功但写库前崩溃 | 新 RT 丢失（旧 RT 已被服务端作废） | 刷新后**立即先写库再写官方文件**；激活账号在配额刷新发生轮换时也按此顺序同步投影，非激活账号只落库 | ✅ 已按此顺序 |
 | S12 | 并发运行两个 hangar 实例 | harvest+switch 竞态写库 | 低概率（人手操作），accounts.json 原子写保证不损坏；最多丢一次 harvest | 🟢 接受 |
 
 ## 实现优先级（已落地）
@@ -97,6 +98,13 @@ hangar 是**按需运行的 CLI**（每次调用存活几秒），没有常驻�
 - 守卫：回车切换使用中账号只提示不重写 auth.json；使用中账号禁止删除（UI + 底层双层拦截）
 - 网络任务走后台线程 + spinner，界面不卡；浏览器登录/手动粘贴 URL 时挂起 TUI 跑原阻塞流程后恢复
 - 后台线程与 TUI 主线程经线程级静默开关隔离 stdout；非 TTY 或 `--classic` 自动回退经典菜单
+
+## 交互（GUI/托盘）
+
+- GUI 与 CLI 共用 `~/.hangar/accounts.json` 和 core 业务 API，不直接读写凭据文件
+- 添加账号仅入库；复活账号仍按既有语义原位更新并切回目标账号
+- 托盘切号复用 GUI 的 current/stale/busy 守卫，切换结果经 worker 事件回主线程收敛
+- Linux 托盘菜单已真机验证；macOS/Windows 验收状态见 `v0.4.0-closure-plan.md`
 
 ## 安全声明（明文存储）
 

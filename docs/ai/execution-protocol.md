@@ -10,7 +10,7 @@
 |------|----------|----------|
 | 小改动 | 文案、注释、日志文案、无行为变化 | 直接修改 + `cargo test` |
 | 普通变更 | 单模块行为变化（如某个命令的守卫、一条展示行） | 澄清 + 简短方案 + 实现 + 测试 + 真机冒烟 |
-| 复杂变更 | 跨模块、OAuth 流程、存储格式、TUI 结构、新增前端 | spec 更新 + 计划 + 分批实现 + 回归 + 双前端验证 |
+| 复杂变更 | 跨模块、OAuth 流程、存储格式、TUI/GUI 结构、新增前端 | spec 更新 + 计划 + 分批实现 + 回归 + 三前端验证 |
 | 高风险变更 | 凭据存储格式、auth.json 投影逻辑、锁语义、删除流程 | 影响说明 + 用户确认 + 执行契约 + 验证证据 |
 
 **本项目特有升级条件**（满足任一即从"小改动"升级）：
@@ -36,7 +36,7 @@
 - **S11 顺序不可倒置**：刷新后先 `save_accounts_unlocked` 落库，再写官方 auth.json
 - **守卫完备性**：任何会写官方 auth.json 的操作必须先检查 `stale` + 空 AT + "使用中"拦截；新增写路径时逐条核对
 - **容错解析**：wham/usage 等非公开契约接口，字段缺失显示"未知"，不许 `unwrap` 崩溃
-- **UI 无关**：业务函数不得 `println!`，一律 `crate::emit::emit/emit_err`；新增用户可见行为需在 TUI 与 classic 两个前端同时暴露
+- **UI 无关**：业务函数不得 `println!`，一律 `crate::emit::emit/emit_err`；新增用户可见业务行为需同步评估 TUI、classic 与 GUI
 - **兼容老库**：`Account` 新字段必须 `#[serde(default)]`；不能假定 account_id/organization_id 存在
 - **时间展示**：统一走 `quota::fmt_ts_local`（本地时区具体日期时间），不引 chrono
 - **无头/管道安全**：`stdin` EOF 优雅退出；`stdout flush` 不 `unwrap`（EPIPE）
@@ -44,7 +44,7 @@
 ## 测试与验证
 
 - 行为变化必须带单测（模块内 `#[cfg(test)]`，基准值注明生成方式）
-- TUI 渲染变化用 `TestBackend` 快照断言；注意 CJK 宽字符在 buffer 中被空格隔开，中文断言只用单字
+- TUI 渲染变化用 `TestBackend` 快照断言；GUI 状态变化优先测 reducer/守卫纯逻辑；注意 CJK 宽字符在 buffer 中被空格隔开，中文断言只用单字
 - 完成前必须给出新鲜证据：
 
 ```bash
@@ -53,7 +53,7 @@ cargo clippy -- -D warnings
 cargo test             # 全部单测（core + cli）
 ```
 
-- 涉及 TUI/交互的变更，额外做 tmux 真机冒烟（capture-pane 验证关键行），并声明"验了什么/没验什么"
+- 涉及 TUI 的变更额外做 tmux 冒烟；涉及 GUI/托盘的变更在对应平台做真机冒烟，并声明"验了什么/没验什么"
 - 涉及真实凭据链路（登录/刷新/配额成功路径）无法离线验证时，明确请用户在真机操作并回报输出；不得用编造的 expires_at/token 宣称"测试通过"
 
 ## 快速路径

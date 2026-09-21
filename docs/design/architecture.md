@@ -11,7 +11,13 @@
 │  classic.rs   经典菜单：stdin 编号交互（非 TTY / --classic 回退）        │
 │  ui.rs        ANSI 样式包装（经典模式）；静默开关代理自 core::emit       │
 └──────────────────────────────┬────────────────────────────────────────┘
-                               │ 仅依赖 core 公开 API
+                               │
+┌────────────────── crates/gui（bin: hangar-gui）────────────────┐
+│  app.rs       egui 状态机、渲染、对话框与托盘命令收敛            │
+│  worker.rs    切换/配额/登录/升级后台任务                         │
+│  tray.rs      Linux SNI 与 Win/macOS 原生托盘平台适配             │
+└──────────────────────────────┬─────────────────────────────────┘
+                               │ 两类前端均仅依赖 core 公开 API
 ┌──────────────────────────────▼────────────────────────────────────────┐
 │                    crates/hangar-core（lib: hangar-core）             │
 │  account.rs   账号库：load/save（原子写+.bak+锁）、harvest、切换、      │
@@ -21,7 +27,7 @@
 │  quota.rs     wham/usage 配额解析（窗口按时长分类）、重置卡只读、       │
 │               本地时间格式化（libc localtime_r，无 chrono）             │
 │  doctor.rs    离线自检：库解析/权限/凭据完整性/官方一致性/锁            │
-│  login.rs     登录+入库（三元组去重）+切换 组合动作                     │
+│  login.rs     登录+入库（三元组去重，不自动切换）组合动作                 │
 │  process.rs   Codex 进程检测（pgrep/ps/tasklist，排除自身）            │
 │  emit.rs      输出总线 + 线程级静默（TUI 后台线程不打花屏幕）           │
 └──────────────────────────────────────────────────────────────────────┘
@@ -31,7 +37,7 @@
 
 - `core` 不依赖任何前端 crate；前端不绕过 core 直接读写账号库
 - 业务提示一律走 `emit::emit/emit_err`（可被 TUI 静默）；只有前端做 ANSI 着色
-- 两个前端共享 `do_login/doctor_lines/switch_account` 等组合函数，不允许复制业务逻辑
+- 三个用户界面共享 `do_login/doctor_lines/switch_account` 等组合函数，不允许复制业务逻辑
 
 ## 关键机制
 
@@ -65,6 +71,13 @@
 - 网络/长耗时任务在后台线程执行，经 `mpsc` 回事件刷新 UI
 - 需要整屏交还终端的流程（浏览器登录/手动粘贴）用挂起-恢复：退出 alt-screen → 跑阻塞流程 → 重进 TUI
 - 后台线程 `set_quiet(true)`，业务 emit 不直写终端
+
+### 6. GUI 与托盘协作
+
+- GUI 主线程只渲染与收敛事件；网络和凭据操作由 worker 后台线程调用 core
+- 托盘平台回调只发送 `TrayCmd` 并请求 repaint，不直接切号或改 UI 状态
+- Linux 使用 ksni/SNI；Windows 与 macOS 使用 tray-icon，托盘对象由 `App` 持有至退出
+- macOS 普通关闭进入菜单栏驻留态，Dock activation policy 随窗口关闭/恢复切换
 
 ## 外部接口（非公开契约，全容错）
 

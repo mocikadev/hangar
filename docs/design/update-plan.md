@@ -1,5 +1,7 @@
 # 自升级机制 Implementation Plan
 
+> 状态：历史实施计划，功能已随 v0.3.0/v0.3.1 发布。下方未勾选框保留原始计划记录，不再作为当前进度；当前任务见 `v0.4.0-closure-plan.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 落地 `docs/design/update-mechanism.md`：CI+Release、自升级、双前端入口。

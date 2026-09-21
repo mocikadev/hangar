@@ -61,17 +61,12 @@ jobs:
             use-cross: false
             artifact: macos-arm64
             bundles: "dmg"
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-            use-cross: false
-            artifact: windows-x86_64
-            bundles: "nsis"
 
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98.1
         with:
           targets: ${{ matrix.target }}
 
@@ -85,8 +80,7 @@ jobs:
         with:
           tool: cross
 
-      - name: Build (Unix)
-        if: runner.os != 'Windows'
+      - name: Build
         run: |
           if [ "${{ matrix.use-cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }} &&
@@ -96,19 +90,8 @@ jobs:
             cargo build --release -p hangar-gui --target ${{ matrix.target }}
           fi
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cargo build --release --target ${{ matrix.target }}
-          cargo build --release -p hangar-gui --target ${{ matrix.target }}
-
-      - name: Stage artifact (Unix)
-        if: runner.os != 'Windows'
+      - name: Stage artifact
         run: cp target/${{ matrix.target }}/release/hangar hangar-${{ matrix.artifact }}
-
-      - name: Stage artifact (Windows)
-        if: runner.os == 'Windows'
-        run: copy target\${{ matrix.target }}\release\hangar.exe hangar-${{ matrix.artifact }}.exe
 
       - name: Install tauri-cli
         run: cargo install tauri-cli --version "^2" --locked
@@ -121,7 +104,7 @@ jobs:
         shell: bash
         run: |
           BUNDLE="target/${{ matrix.target }}/release/bundle"
-          find "$BUNDLE" -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*-setup.exe" \) -exec cp {} . \;
+          find "$BUNDLE" -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.dmg" -o -name "*.AppImage" \) -exec cp {} . \;
           ls hangar-*
 
       - name: Upload artifact
@@ -134,7 +117,6 @@ jobs:
             *.rpm
             *.dmg
             *.AppImage
-            *-setup.exe
           retention-days: 1
 
   release:
@@ -151,15 +133,15 @@ jobs:
 
       - name: Create checksums
         working-directory: artifacts
-        run: sha256sum hangar-* *.deb *.dmg *.AppImage *-setup.exe 2>/dev/null > SHA256SUMS.txt; cat SHA256SUMS.txt
+        run: sha256sum hangar-* *.deb *.rpm *.dmg *.AppImage 2>/dev/null > SHA256SUMS.txt; cat SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/hangar-*
             artifacts/*.deb
+            artifacts/*.rpm
             artifacts/*.dmg
             artifacts/*.AppImage
-            artifacts/*-setup.exe
             artifacts/SHA256SUMS.txt
           generate_release_notes: true
