@@ -118,7 +118,7 @@ Codex 进程内存中还是旧凭据，重启 Codex 即可（工具会检测并�
 
 ## 开发者入口
 
-从源码构建、架构设计、测试策略见：[docs/design/architecture.md](docs/design/architecture.md) · [docs/design/scenarios.md](docs/design/scenarios.md) · [docs/quality/test-strategy.md](docs/quality/test-strategy.md)。
+技术文档总览（含需求、架构、测试、构建）：[docs/README.md](docs/README.md)。
 
 ---
 
