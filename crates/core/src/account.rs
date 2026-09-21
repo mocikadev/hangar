@@ -827,7 +827,7 @@ fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, Stri
                     let _ = save_accounts(&f);
                 }
                 return Err(format!(
-                    "账号 {} 的 refresh_token 已失效（⚠ 需重新登录），已拒绝继续以保护当前登录态",
+                    "账号 {} 的凭据已过期（可能在 Codex 侧轮换时未收编），已拒绝继续以保护当前登录态；请对该账号重新登录复活一次",
                     account.email
                 ));
             }
@@ -849,7 +849,7 @@ pub fn fresh_account(account_id: &str) -> Result<Account, String> {
             .ok_or_else(|| format!("账号未找到: {}", account_id))?;
         if file.accounts[idx].stale {
             return Err(format!(
-                "账号 {} 已失效（按 r 复活），跳过",
+                "账号 {} 已失效（用「复活」重新登录一次即可），跳过",
                 file.accounts[idx].email
             ));
         }
@@ -901,7 +901,7 @@ fn switch_locked(account_id: &str) -> Result<(), String> {
     // 当前正常工作的登录态污染成废凭据（用 r 命令定向复活）
     if file.accounts[idx].stale {
         return Err(format!(
-            "账号 {} 的 refresh_token 已失效（⚠ 需重新登录），已拒绝切换以保护当前登录态；按 r 可定向复活该账号",
+            "账号 {} 的凭据已失效（需重新登录），已拒绝切换以保护当前登录态；可用「复活」定向重新登录该账号",
             file.accounts[idx].email
         ));
     }
@@ -917,7 +917,7 @@ fn switch_locked(account_id: &str) -> Result<(), String> {
         file.accounts[idx].stale = true;
         let _ = save_accounts_unlocked(&file);
         return Err(format!(
-            "账号 {} 缺少 access_token 且无法刷新，已标为需重新登录（按 r 复活），未触碰官方登录态",
+            "账号 {} 缺少 access_token 且无法刷新，已标为需重新登录（用「复活」处理），未触碰官方登录态",
             account.email
         ));
     }

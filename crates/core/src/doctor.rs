@@ -103,7 +103,10 @@ pub fn doctor_lines(binary_version: &str) -> Result<(Vec<String>, usize), String
             None => "AT 有效期未知".to_string(),
         };
         if acc.stale {
-            err(&mut out, format!("{}：已失效，按 r 复活", acc.email));
+            err(
+                &mut out,
+                format!("{}：已失效，用「复活」重新登录", acc.email),
+            );
             bad += 1;
         } else if issues.is_empty() {
             ok(&mut out, format!("{}：{}，{}", acc.email, exp, "凭据完整"));

@@ -326,7 +326,10 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
                 Line::from(vec![
                     Span::raw("  状态: "),
                     if a.stale {
-                        Span::styled("⚠ 需重新登录（r 复活）", Style::default().fg(Color::Yellow))
+                        Span::styled(
+                            "⚠ 需重新登录（: → 复活账号）",
+                            Style::default().fg(Color::Yellow),
+                        )
                     } else {
                         Span::styled("正常", Style::default().fg(Color::Green))
                     },
