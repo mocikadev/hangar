@@ -65,15 +65,20 @@ impl TrayHandle {
     }
 
     /// Win/mac 专用：在主线程事件循环内创建托盘（eframe 创建回调中调用）。
+    /// Linux 上 ksni 托盘已在 spawn 时启动，空操作。
+    #[cfg(target_os = "linux")]
+    pub fn build_on_main_thread(&mut self, _wake: egui::Context) {}
+
+    /// Win/mac 专用：在主线程事件循环内创建托盘（eframe 创建回调中调用）。
     /// Linux 上是空操作。
     #[cfg(not(target_os = "linux"))]
-    pub fn build_on_main_thread(&mut self) {
+    pub fn build_on_main_thread(&mut self, wake: egui::Context) {
         if let Some(PlatformTray::Deferred { cmd_tx, built }) = &mut self.inner {
             if *built {
                 return;
             }
             *built = true;
-            match winmac::build(cmd_tx.clone()) {
+            match winmac::build(cmd_tx.clone(), wake) {
                 Ok(t) => self.inner = Some(PlatformTray::TrayIcon(t)),
                 Err(e) => eprintln!("托盘创建失败（主窗口不受影响）: {}", e),
             }
@@ -81,21 +86,24 @@ impl TrayHandle {
     }
 
     /// 用账号库最新状态刷新托盘菜单（激活账号打勾）
+    #[cfg(target_os = "linux")]
+    pub fn update_accounts(&self, items: &[(String, String, bool)]) {
+        if let Some(PlatformTray::Ksni(h)) = &self.inner {
+            let items = items.to_vec();
+            let _ = h.update(move |t| {
+                t.accounts = items;
+            });
+        }
+    }
+
+    /// 用账号库最新状态刷新托盘菜单（激活账号打勾）
+    #[cfg(not(target_os = "linux"))]
     pub fn update_accounts(&self, items: &[(String, String, bool)]) {
         match &self.inner {
-            Some(PlatformTray::Ksni(h)) => {
-                let items = items.to_vec();
-                let _ = h.update(move |t| {
-                    t.accounts = items;
-                });
-            }
-            #[cfg(not(target_os = "linux"))]
             Some(PlatformTray::TrayIcon(t)) => winmac::update_menu(t, items),
-            #[cfg(not(target_os = "linux"))]
             Some(PlatformTray::Deferred { .. }) => {
                 let _ = items; // 托盘尚未在主线程创建，菜单状态随 build 重建
             }
-            #[cfg(target_os = "linux")]
             None => {}
         }
     }
@@ -225,62 +233,65 @@ mod linux {
 mod winmac {
     use super::{icon_rgba, TrayCmd};
     use std::sync::mpsc::Sender;
-    use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-    use tray_icon::{TrayIcon, TrayIconBuilder};
+    use tray_icon::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+    use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
     const ID_SHOW: &str = "show";
     const ID_QUIT: &str = "quit";
+    /// 账号切换项 id 前缀（后接账号 id）
+    const ACT_PREFIX: &str = "act:";
 
-    /// 主线程事件循环内创建托盘（左键单击显示主窗口）
-    pub fn build(cmd_tx: Sender<TrayCmd>) -> Result<TrayIcon, Box<dyn std::error::Error>> {
-        let menu = build_menu(&[]);
+    /// 主线程事件循环内创建托盘。
+    /// 点击/菜单事件经 set_event_handler 直推进命令通道（全局 receiver 轮询
+    /// 线程在 winit 事件循环被阻塞时同样收不到分发，handler 更可靠）。
+    pub fn build(
+        cmd_tx: Sender<TrayCmd>,
+        wake: egui::Context,
+    ) -> Result<TrayIcon, Box<dyn std::error::Error>> {
         let icon = tray_icon::Icon::from_rgba(icon_rgba(), 128, 128)?;
         let tray = TrayIconBuilder::new()
-            .with_menu(Box::new(menu))
+            .with_menu(Box::new(build_menu(&[])))
             .with_tooltip("hangar")
             .with_icon(icon)
             .with_menu_on_left_click(false)
             .build()?;
-        // 菜单/图标事件 → 命令通道（全局 receiver，转发线程独立于事件循环）
-        let fwd_tx = cmd_tx.clone();
-        std::thread::spawn(move || {
-            let menu_rx = MenuEvent::receiver();
-            loop {
-                if let Ok(ev) = menu_rx.recv() {
-                    match ev.id().0.as_str() {
-                        ID_SHOW => {
-                            let _ = fwd_tx.send(TrayCmd::ShowWindow);
-                        }
-                        ID_QUIT => {
-                            let _ = fwd_tx.send(TrayCmd::Quit);
-                        }
-                        other => {
-                            // 其余 id 均为 "act:<账号id>" 切换命令
-                            if let Some(id) = other.strip_prefix("act:") {
-                                let _ = fwd_tx.send(TrayCmd::Switch(id.to_string()));
-                            }
-                        }
-                    }
-                } else {
-                    break;
+
+        // 菜单事件（含账号切换/显示/退出）→ 命令通道 + 唤醒重绘
+        let menu_tx = cmd_tx.clone();
+        let menu_wake = wake.clone();
+        tray_icon::menu::MenuEvent::set_event_handler(Some(
+            move |ev: tray_icon::menu::MenuEvent| {
+                let id = ev.id().0.clone();
+                let cmd = match id.as_str() {
+                    ID_SHOW => Some(TrayCmd::ShowWindow),
+                    ID_QUIT => Some(TrayCmd::Quit),
+                    other => other
+                        .strip_prefix(ACT_PREFIX)
+                        .map(|a| TrayCmd::Switch(a.to_string())),
+                };
+                if let Some(cmd) = cmd {
+                    let _ = menu_tx.send(cmd);
+                    menu_wake.request_repaint();
                 }
-            }
-        });
+            },
+        ));
+
         // 左键单击图标 → 显示主窗口
         let click_tx = cmd_tx;
-        tray.set_show_menu_on_left_click(false);
-        tray.on_tray_icon_event(tray_icon::TrayIconEvent::main(), move |_icon, event| {
+        let click_wake = wake;
+        TrayIconEvent::set_event_handler(Some(move |ev| {
             if matches!(
-                event,
-                tray_icon::TrayIconEvent::Click {
-                    button: tray_icon::MouseButton::Left,
-                    button_state: tray_icon::MouseButtonState::Up,
+                ev,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
                     ..
                 }
             ) {
                 let _ = click_tx.send(TrayCmd::ShowWindow);
+                click_wake.request_repaint();
             }
-        });
+        }));
         Ok(tray)
     }
 
@@ -293,19 +304,14 @@ mod winmac {
         let menu = Menu::new();
         for (id, email, active) in items {
             let item =
-                CheckMenuItem::with_id(format!("act:{}", id), email, true, *active, None::<&str>);
+                CheckMenuItem::with_id(format!("{}{}", ACT_PREFIX, id), email, true, *active, None);
             let _ = menu.append(&item);
         }
         if !items.is_empty() {
             let _ = menu.append(&PredefinedMenuItem::separator());
         }
-        let _ = menu.append(&MenuItem::with_id(
-            ID_SHOW,
-            "显示主窗口",
-            true,
-            None::<&str>,
-        ));
-        let _ = menu.append(&MenuItem::with_id(ID_QUIT, "退出", true, None::<&str>));
+        let _ = menu.append(&MenuItem::with_id(ID_SHOW, "显示主窗口", true, None));
+        let _ = menu.append(&MenuItem::with_id(ID_QUIT, "退出", true, None));
         menu
     }
 }

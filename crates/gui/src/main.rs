@@ -19,22 +19,31 @@ fn main() -> eframe::Result<()> {
     let (tray_tx, tray_rx) = std::sync::mpsc::channel();
     app.tray_rx = tray_rx;
 
-    let mut opts = eframe::NativeOptions::default();
+    // Wayland 下 winit 不支持客户端隐藏窗口（Visible(false) 被忽略），
+    // 强制走 XWayland/X11 后端，隐藏/显示行为与 Qt 应用（QQ 等）一致
     #[cfg(target_os = "linux")]
-    {
-        // Wayland 下 winit 不支持客户端隐藏窗口（Visible(false) 被忽略），
-        // 强制走 XWayland/X11 后端，隐藏/显示行为与 Qt 应用（QQ 等）一致
+    let opts = {
         use winit::platform::x11::EventLoopBuilderExtX11;
-        opts.event_loop_builder = Some(Box::new(|builder| {
-            builder.with_x11();
-        }));
-    }
+        eframe::NativeOptions {
+            event_loop_builder: Some(Box::new(|builder| {
+                builder.with_x11();
+            })),
+            ..Default::default()
+        }
+    };
+    #[cfg(not(target_os = "linux"))]
+    let opts = eframe::NativeOptions::default();
 
     eframe::run_native(
         "hangar",
         opts,
         Box::new(move |cc| {
             app.tray = tray::TrayHandle::spawn(tray_tx, cc.egui_ctx.clone());
+            // Win/mac：托盘须在跑着事件循环的主线程上创建（tray-icon README），
+            // eframe 创建回调正是该线程；Linux 上此调用为空操作
+            if let Some(t) = app.tray.as_mut() {
+                t.build_on_main_thread(cc.egui_ctx.clone());
+            }
             app.sync_tray();
             // 深色主题 + 现代化控件样式
             cc.egui_ctx.set_theme(egui::Theme::Dark);
