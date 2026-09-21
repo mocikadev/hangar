@@ -409,14 +409,9 @@ mod tests {
     #[test]
     fn sibling_names_keep_dir_and_stem() {
         // 含空格/中文目录：PathBuf 操作不做字符串拼接
-        let exe = std::path::Path::new("/tmp/我的 目录/hangar");
-        assert_eq!(
-            tmp_path_for(exe).to_string_lossy().as_ref(),
-            "/tmp/我的 目录/hangar.update-tmp"
-        );
-        assert_eq!(
-            old_path_for(exe).to_string_lossy().as_ref(),
-            "/tmp/我的 目录/hangar.old"
-        );
+        let dir = std::path::PathBuf::from("tmp").join("我的 目录");
+        let exe = dir.join("hangar");
+        assert_eq!(tmp_path_for(&exe), dir.join("hangar.update-tmp"));
+        assert_eq!(old_path_for(&exe), dir.join("hangar.old"));
     }
 }
