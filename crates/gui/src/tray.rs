@@ -454,6 +454,16 @@ fn macos_template_icon_rgba() -> Vec<u8> {
     data
 }
 
+/// ksni 要 ARGB32（网络字节序）：rgba 每像素字节右旋 1 位
+#[cfg(target_os = "linux")]
+fn icon_argb32() -> Vec<u8> {
+    let mut data = icon_rgba();
+    for px in data.as_chunks_mut::<4>().0 {
+        px.rotate_right(1);
+    }
+    data
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,14 +499,4 @@ mod tests {
         assert!(transparent > 8_000);
         assert!(visible > 100);
     }
-}
-
-/// ksni 要 ARGB32（网络字节序）：rgba 每像素字节右旋 1 位
-#[cfg(target_os = "linux")]
-fn icon_argb32() -> Vec<u8> {
-    let mut data = icon_rgba();
-    for px in data.as_chunks_mut::<4>().0 {
-        px.rotate_right(1);
-    }
-    data
 }

@@ -13,7 +13,7 @@ pub fn codex_process_running() -> bool {
                 return true;
             }
         }
-        return codex_running_via_ps();
+        codex_running_via_ps()
     }
     #[cfg(not(target_os = "windows"))]
     {
