@@ -27,3 +27,8 @@ ksni = { version = "0.3.6", default-features = false, features = ["blocking", "a
 # Win/macOS：tauri tray-icon（Linux 走上面的 ksni，不引 GTK）
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 tray-icon = "0.25"
+
+# macOS：窗口关闭后在 Regular/Accessory 间切换，使 Dock 图标与主窗口生命周期一致。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSRunningApplication"] }

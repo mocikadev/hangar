@@ -83,17 +83,7 @@ impl App {
     /// 账号库 → 托盘菜单同步（激活账号打勾，tooltip 显示当前邮箱）
     pub fn sync_tray(&self) {
         if let Some(t) = &self.tray {
-            let items: Vec<(String, String, bool)> = self
-                .accounts
-                .iter()
-                .map(|a| {
-                    (
-                        a.id.clone(),
-                        a.email.clone(),
-                        Some(a.id.as_str()) == self.current.as_deref(),
-                    )
-                })
-                .collect();
+            let items = crate::tray::account_menu_items(&self.accounts, self.current.as_deref());
             t.update_accounts(&items);
         }
     }
@@ -226,19 +216,9 @@ impl App {
 
     pub fn do_switch(&mut self) {
         let sel = self.selected.clone();
-        let cur = self.current.clone();
         let Some(id) = sel else { return };
-        if Some(id.as_str()) == cur.as_deref() {
-            self.status = "已是使用中的账号，无需切换".to_string();
-            return;
-        }
-        if self
-            .accounts
-            .iter()
-            .find(|a| a.id == id)
-            .is_some_and(|a| a.stale)
-        {
-            self.status = "该账号已失效，请先复活".to_string();
+        if let Some(reason) = self.switch_block_reason(&id) {
+            self.status = reason.to_string();
             return;
         }
         self.busy = true;
@@ -248,26 +228,28 @@ impl App {
 
     /// 托盘菜单切换：同 do_switch 的守卫，但直接指定目标 id
     fn switch_from_tray(&mut self, id: String) {
-        if self.busy {
-            return; // 上一动作未完成，忽略（托盘没有可禁用的按钮）
-        }
         self.selected = Some(id.clone());
-        if Some(id.as_str()) == self.current.as_deref() {
-            self.status = "已是使用中的账号，无需切换".to_string();
-            return;
-        }
-        if self
-            .accounts
-            .iter()
-            .find(|a| a.id == id)
-            .is_some_and(|a| a.stale)
-        {
-            self.status = "该账号已失效，请先复活".to_string();
+        if let Some(reason) = self.switch_block_reason(&id) {
+            self.status = reason.to_string();
             return;
         }
         self.busy = true;
         self.status = "切换中…".to_string();
         crate::worker::spawn_switch(self.tx.clone(), id);
+    }
+
+    fn switch_block_reason(&self, id: &str) -> Option<&'static str> {
+        if self.busy {
+            return Some("已有操作正在进行，请稍候");
+        }
+        if Some(id) == self.current.as_deref() {
+            return Some("已是使用中的账号，无需切换");
+        }
+        match self.accounts.iter().find(|a| a.id == id) {
+            Some(a) if a.stale => Some("该账号已失效，请先复活"),
+            Some(_) => None,
+            None => Some("账号已不存在，请刷新列表"),
+        }
     }
 
     /// 托盘命令轮询（ui/logic 共用；logic 中禁 UI，仅改状态/发视口命令）
@@ -276,6 +258,9 @@ impl App {
             match cmd {
                 crate::tray::TrayCmd::Switch(id) => self.switch_from_tray(id),
                 crate::tray::TrayCmd::ShowWindow => {
+                    if let Err(e) = crate::tray::leave_tray_mode() {
+                        self.status = format!("恢复 Dock 失败：{e}");
+                    }
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
@@ -295,6 +280,9 @@ impl App {
         let close_requested = ctx.input(|i| i.viewport().close_requested());
         if close_requested && !self.quit_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            if let Err(e) = crate::tray::enter_tray_mode() {
+                self.status = format!("进入托盘驻留失败：{e}");
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
     }
@@ -544,8 +532,12 @@ impl App {
         for a in &self.accounts {
             let is_current = Some(a.id.as_str()) == current.as_deref();
             let sel = Some(a.id.as_str()) == selected.as_deref();
-            // 行内附配额摘要（有数据才附，无数据不刷"未知"保整洁）
-            let summary = quota_summary(self, &a.id);
+            // 行内附配额摘要（有数据才附；失效账号隐藏旧缓存，避免误导）
+            let summary = if a.stale {
+                "未知".to_string()
+            } else {
+                quota_summary(self, &a.id)
+            };
             let frame_fill = if sel {
                 ui.visuals().selection.bg_fill
             } else if is_current {
@@ -713,7 +705,7 @@ pub fn quota_summary(app: &App, id: &str) -> String {
                     .remaining
                     .map(|p| format!("{}%", p))
                     .unwrap_or_else(|| "未知".to_string());
-                format!("{} {}", w.label, pct)
+                format!("{}剩余 {}", w.label, pct)
             })
             .collect::<Vec<_>>()
             .join(" · "),
@@ -729,6 +721,10 @@ impl eframe::App for App {
     /// 窗口隐藏时仍被调用（有 request_repaint 才触发）：继续轮询托盘与后台事件，
     /// 禁一切 UI/绘制。切号等动作照常生效，事件在下次显示时反映到界面。
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // eframe 在窗口被遮挡、最小化或正关闭时可能只跑 logic，不调用 ui。
+        // CloseRequested 必须在这里取消，否则 macOS 红色关闭会直接结束事件循环，
+        // 来不及进入“仅菜单栏托盘、无 Dock 图标”的驻留态。
+        self.intercept_close(ctx);
         self.poll_tray(ctx);
         while let Ok(ev) = self.rx.try_recv() {
             self.reduce(ev);
@@ -738,7 +734,6 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll();
         self.poll_tray(ui.ctx());
-        self.intercept_close(ui.ctx());
         // 底部状态栏固定在窗口底部，主区占满剩余高度
         egui::containers::panel::Panel::bottom("status_bar").show(ui, |ui| {
             ui.add_space(4.0);
@@ -877,6 +872,26 @@ mod tests {
     }
 
     #[test]
+    fn quota_summary_labels_values_as_remaining() {
+        let mut app = App::default();
+        app.quotas.insert(
+            "x".into(),
+            hangar_core::quota::Quota {
+                windows: vec![hangar_core::quota::NamedWindow {
+                    label: "周".into(),
+                    window: hangar_core::quota::QuotaWindow {
+                        remaining: Some(6),
+                        ..Default::default()
+                    },
+                }],
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(quota_summary(&app, "x"), "周剩余 6%");
+    }
+
+    #[test]
     fn delete_current_account_is_blocked_in_gui() {
         let app = App {
             current: Some("id-1".into()),
@@ -927,5 +942,52 @@ mod tests {
             res: Ok(Some("0.4.0".into())),
         });
         assert!(matches!(app.dialog, Some(Dialog::UpdateAvailable { .. })));
+    }
+
+    fn account(id: &str, stale: bool) -> Account {
+        Account {
+            id: id.into(),
+            email: format!("{id}@example.com"),
+            access_token: String::new(),
+            refresh_token: String::new(),
+            id_token: String::new(),
+            expires_at: 0,
+            stale,
+            account_id: None,
+            organization_id: None,
+        }
+    }
+
+    #[test]
+    fn tray_switch_guard_blocks_busy_current_stale_and_missing() {
+        let mut app = App {
+            accounts: vec![
+                account("current", false),
+                account("stale", true),
+                account("ok", false),
+            ],
+            current: Some("current".into()),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            app.switch_block_reason("current"),
+            Some("已是使用中的账号，无需切换")
+        );
+        assert_eq!(
+            app.switch_block_reason("stale"),
+            Some("该账号已失效，请先复活")
+        );
+        assert_eq!(
+            app.switch_block_reason("missing"),
+            Some("账号已不存在，请刷新列表")
+        );
+        assert_eq!(app.switch_block_reason("ok"), None);
+
+        app.busy = true;
+        assert_eq!(
+            app.switch_block_reason("ok"),
+            Some("已有操作正在进行，请稍候")
+        );
     }
 }

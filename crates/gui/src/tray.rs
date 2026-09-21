@@ -7,7 +7,7 @@
 //! - Linux：ksni 服务自带线程，`TrayHandle::spawn` 随时可调。
 //! - Win/mac：tray-icon 必须在跑着事件循环的主线程上创建（tray-icon README），
 //!   所以 `spawn` 只存通道，真正的图标在 `build_on_main_thread`（eframe 创建回调里）落地；
-//!   菜单事件由全局 receiver 的转发线程送进命令通道。
+//!   全局事件 handler 只把动作送进命令通道。
 
 use std::sync::mpsc::Sender;
 
@@ -20,6 +20,23 @@ pub enum TrayCmd {
     ShowWindow,
     /// 退出程序（含托盘 shutdown）
     Quit,
+}
+
+/// 账号快照转托盘菜单模型；平台层只消费不可变值，不持有 App 状态。
+pub(crate) fn account_menu_items(
+    accounts: &[hangar_core::account::Account],
+    current: Option<&str>,
+) -> Vec<(String, String, bool)> {
+    accounts
+        .iter()
+        .map(|a| {
+            (
+                a.id.clone(),
+                a.email.clone(),
+                Some(a.id.as_str()) == current,
+            )
+        })
+        .collect()
 }
 
 /// 托盘对 UI 侧暴露的最小接口
@@ -114,6 +131,36 @@ impl TrayHandle {
         if let Some(PlatformTray::Ksni(h)) = &self.inner {
             h.shutdown().wait();
         }
+        #[cfg(not(target_os = "linux"))]
+        {
+            // tray-icon handler 是进程级全局状态；先解除闭包，再由调用方 drop TrayIcon。
+            tray_icon::menu::MenuEvent::set_event_handler(None::<fn(tray_icon::menu::MenuEvent)>);
+            tray_icon::TrayIconEvent::set_event_handler(None::<fn(tray_icon::TrayIconEvent)>);
+        }
+    }
+}
+
+/// 主窗口关闭后的平台驻留态。macOS 切为 Accessory 以从 Dock 移除；其他平台无操作。
+pub fn enter_tray_mode() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::set_accessory()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
+}
+
+/// 从托盘恢复主窗口。macOS 先恢复 Regular/Dock 并激活应用；其他平台无操作。
+pub fn leave_tray_mode() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::set_regular_and_activate()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
     }
 }
 
@@ -231,10 +278,16 @@ mod linux {
 
 #[cfg(not(target_os = "linux"))]
 mod winmac {
-    use super::{icon_rgba, TrayCmd};
+    #[cfg(target_os = "windows")]
+    use super::icon_rgba;
+    #[cfg(target_os = "macos")]
+    use super::macos_template_icon_rgba;
+    use super::TrayCmd;
     use std::sync::mpsc::Sender;
     use tray_icon::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
-    use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+    #[cfg(target_os = "windows")]
+    use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
+    use tray_icon::{TrayIcon, TrayIconBuilder};
 
     const ID_SHOW: &str = "show";
     const ID_QUIT: &str = "quit";
@@ -248,13 +301,23 @@ mod winmac {
         cmd_tx: Sender<TrayCmd>,
         wake: egui::Context,
     ) -> Result<TrayIcon, Box<dyn std::error::Error>> {
+        #[cfg(target_os = "macos")]
+        let icon = tray_icon::Icon::from_rgba(macos_template_icon_rgba(), 128, 128)?;
+        #[cfg(target_os = "windows")]
         let icon = tray_icon::Icon::from_rgba(icon_rgba(), 128, 128)?;
-        let tray = TrayIconBuilder::new()
+
+        let builder = TrayIconBuilder::new()
             .with_menu(Box::new(build_menu(&[])))
             .with_tooltip("hangar")
-            .with_icon(icon)
-            .with_menu_on_left_click(false)
-            .build()?;
+            .with_icon(icon);
+        // macOS 菜单栏遵循左键打开菜单的系统惯例；Windows 左键恢复主窗口。
+        #[cfg(target_os = "macos")]
+        let builder = builder
+            .with_icon_as_template(true)
+            .with_menu_on_left_click(true);
+        #[cfg(target_os = "windows")]
+        let builder = builder.with_menu_on_left_click(false);
+        let tray = builder.build()?;
 
         // 菜单事件（含账号切换/显示/退出）→ 命令通道 + 唤醒重绘
         let menu_tx = cmd_tx.clone();
@@ -276,28 +339,39 @@ mod winmac {
             },
         ));
 
-        // 左键单击图标 → 显示主窗口
-        let click_tx = cmd_tx;
-        let click_wake = wake;
-        TrayIconEvent::set_event_handler(Some(move |ev| {
-            if matches!(
-                ev,
-                TrayIconEvent::Click {
-                    button: MouseButton::Left,
-                    button_state: MouseButtonState::Up,
-                    ..
+        // Windows 左键单击图标 → 显示主窗口；macOS 左键由系统打开菜单。
+        #[cfg(target_os = "windows")]
+        {
+            let click_tx = cmd_tx;
+            let click_wake = wake;
+            TrayIconEvent::set_event_handler(Some(move |ev| {
+                if matches!(
+                    ev,
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    }
+                ) {
+                    let _ = click_tx.send(TrayCmd::ShowWindow);
+                    click_wake.request_repaint();
                 }
-            ) {
-                let _ = click_tx.send(TrayCmd::ShowWindow);
-                click_wake.request_repaint();
-            }
-        }));
+            }));
+        }
         Ok(tray)
     }
 
     /// 重建菜单：账号勾选项 + 显示主窗口 + 退出
     pub fn update_menu(tray: &TrayIcon, items: &[(String, String, bool)]) {
-        let _ = tray.set_menu(Some(Box::new(build_menu(items))));
+        tray.set_menu(Some(Box::new(build_menu(items))));
+        let tooltip = items
+            .iter()
+            .find(|(_, _, active)| *active)
+            .map(|(_, email, _)| format!("hangar · {email}"))
+            .unwrap_or_else(|| "hangar".to_string());
+        if let Err(e) = tray.set_tooltip(Some(tooltip)) {
+            eprintln!("托盘提示更新失败（主窗口不受影响）: {e}");
+        }
     }
 
     fn build_menu(items: &[(String, String, bool)]) -> Menu {
@@ -305,14 +379,55 @@ mod winmac {
         for (id, email, active) in items {
             let item =
                 CheckMenuItem::with_id(format!("{}{}", ACT_PREFIX, id), email, true, *active, None);
-            let _ = menu.append(&item);
+            if let Err(e) = menu.append(&item) {
+                eprintln!("托盘账号菜单项创建失败: {e}");
+            }
         }
         if !items.is_empty() {
-            let _ = menu.append(&PredefinedMenuItem::separator());
+            if let Err(e) = menu.append(&PredefinedMenuItem::separator()) {
+                eprintln!("托盘分隔线创建失败: {e}");
+            }
         }
-        let _ = menu.append(&MenuItem::with_id(ID_SHOW, "显示主窗口", true, None));
-        let _ = menu.append(&MenuItem::with_id(ID_QUIT, "退出", true, None));
+        if let Err(e) = menu.append(&MenuItem::with_id(ID_SHOW, "显示主窗口", true, None)) {
+            eprintln!("托盘显示菜单项创建失败: {e}");
+        }
+        if let Err(e) = menu.append(&MenuItem::with_id(ID_QUIT, "退出", true, None)) {
+            eprintln!("托盘退出菜单项创建失败: {e}");
+        }
         menu
+    }
+}
+
+// ---------- macOS：Dock / activation policy ----------
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+
+    fn application() -> Result<objc2::rc::Retained<NSApplication>, String> {
+        let mtm = MainThreadMarker::new()
+            .ok_or_else(|| "macOS activation policy 必须在主线程切换".to_string())?;
+        Ok(NSApplication::sharedApplication(mtm))
+    }
+
+    pub fn set_accessory() -> Result<(), String> {
+        let app = application()?;
+        if app.setActivationPolicy(NSApplicationActivationPolicy::Accessory) {
+            Ok(())
+        } else {
+            Err("macOS 无法进入菜单栏驻留态".to_string())
+        }
+    }
+
+    pub fn set_regular_and_activate() -> Result<(), String> {
+        let app = application()?;
+        if !app.setActivationPolicy(NSApplicationActivationPolicy::Regular) {
+            return Err("macOS 无法恢复 Dock 图标".to_string());
+        }
+        #[allow(deprecated)]
+        app.activateIgnoringOtherApps(true);
+        Ok(())
     }
 }
 
@@ -321,6 +436,59 @@ mod winmac {
 /// 内嵌 128×128 RGBA 资产
 fn icon_rgba() -> Vec<u8> {
     include_bytes!("../assets/tray.rgba").to_vec()
+}
+
+/// 从彩色应用图标提取透明单色挂钩，供 macOS template icon 自动适配明暗菜单栏。
+#[cfg(target_os = "macos")]
+fn macos_template_icon_rgba() -> Vec<u8> {
+    let mut data = icon_rgba();
+    for px in data.as_chunks_mut::<4>().0 {
+        let source_alpha = px[3] as u16;
+        // 原图白色挂钩的红通道接近 255，蓝色底的红通道很低；保留抗锯齿并去底。
+        let mask = px[0].saturating_sub(160) as u16;
+        px[0] = 255;
+        px[1] = 255;
+        px[2] = 255;
+        px[3] = ((source_alpha * mask) / 95).min(255) as u8;
+    }
+    data
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account(id: &str) -> hangar_core::account::Account {
+        hangar_core::account::Account {
+            id: id.into(),
+            email: format!("{id}@example.com"),
+            access_token: String::new(),
+            refresh_token: String::new(),
+            id_token: String::new(),
+            expires_at: 0,
+            stale: false,
+            account_id: None,
+            organization_id: None,
+        }
+    }
+
+    #[test]
+    fn tray_items_mark_only_current_account() {
+        let items = account_menu_items(&[account("a"), account("b")], Some("a"));
+        assert_eq!(items.iter().filter(|(_, _, active)| *active).count(), 1);
+        assert_eq!(items.iter().find(|(_, _, active)| *active).unwrap().0, "a");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_template_icon_has_transparent_background_and_visible_glyph() {
+        let rgba = macos_template_icon_rgba();
+        let pixels = rgba.as_chunks::<4>().0;
+        let transparent = pixels.iter().filter(|px| px[3] == 0).count();
+        let visible = pixels.iter().filter(|px| px[3] > 200).count();
+        assert!(transparent > 8_000);
+        assert!(visible > 100);
+    }
 }
 
 /// ksni 要 ARGB32（网络字节序）：rgba 每像素字节右旋 1 位
