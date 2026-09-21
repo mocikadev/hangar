@@ -1,6 +1,6 @@
 //! 全屏 TUI（ratatui）：账号列表 + 详情/配额 + 日志三栏，j/k + / 过滤。
 //!
-//! - 快捷键：回车切换，a 添加，r 复活，u 全量配额，D 自检覆盖层，R 立即收敛，d 删除确认，q 退出
+//! - 键位：j/k 移动，/ 过滤，回车切换，: 命令面板（添加/复活/配额/自检/收敛/删除/更新），q 退出
 //! - 网络/长耗时走后台线程 + mpsc 事件，界面不卡；spinner 动画靠 100ms tick
 //! - 需要整屏交还终端的流程（浏览器登录/手动粘贴 URL）用挂起-恢复：
 //!   退出 alt-screen + 还原 cooked 模式跑原有阻塞流程，结束重进 TUI
@@ -233,7 +233,7 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
     let rows = app.filtered();
     let items: Vec<ListItem> = if rows.is_empty() {
         vec![ListItem::new(Line::styled(
-            "  （空）按 a 添加",
+            "  （空）按 : 打开命令面板添加",
             Style::default().fg(Color::DarkGray),
         ))]
     } else {
@@ -355,7 +355,7 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
         None => f.render_widget(Paragraph::new("  -").block(quota_block), right[1]),
         Some(a) => match app.quotas.get(&a.id) {
             None => f.render_widget(
-                Paragraph::new("  按 u 查询全量配额").block(quota_block),
+                Paragraph::new("  按 : 打开命令面板查询配额").block(quota_block),
                 right[1],
             ),
             Some(q) => {
