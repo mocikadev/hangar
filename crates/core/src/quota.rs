@@ -405,19 +405,10 @@ fn local_utc_offset_secs(ts: i64) -> i64 {
     #[cfg(unix)]
     {
         let sample = ts - ts.rem_euclid(86400) + 43200;
-        let mut tm = libc::tm {
-            tm_sec: 0,
-            tm_min: 0,
-            tm_hour: 0,
-            tm_mday: 0,
-            tm_mon: 0,
-            tm_year: 0,
-            tm_wday: 0,
-            tm_yday: 0,
-            tm_isdst: 0,
-            tm_gmtoff: 0,
-            tm_zone: std::ptr::null(),
-        };
+        // tm_zone 在 macOS 是 *mut、Linux 是 *const，字面量初始化无法兼顾；
+        // localtime_r 会重写全部字段，零初始化最可移植
+        // SAFETY: libc::tm 为纯数据结构，全零是合法初值且随后被 localtime_r 覆盖
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
         let t: libc::time_t = sample as libc::time_t;
         unsafe {
             if libc::localtime_r(&t, &mut tm).is_null() {
