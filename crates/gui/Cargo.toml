@@ -12,3 +12,4 @@ path = "src/main.rs"
 hangar-core = { path = "../core" }
 eframe = "0.36"
 egui = "0.36"
+skrifa = "0.44"
