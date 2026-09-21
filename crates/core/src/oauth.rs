@@ -81,7 +81,7 @@ pub trait LoginHooks {
 }
 
 /// 终端默认实现：行为与原 `prompt_manual_callback` 逐行一致
-struct StdinHooks;
+pub struct StdinHooks;
 
 impl LoginHooks for StdinHooks {
     fn show_auth_url(&self, url: &str) {

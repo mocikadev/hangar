@@ -2,7 +2,12 @@
 /// OAuth 登录并入库 + 切换（经典循环与 TUI 共用；调用方负责浏览器交互的屏幕形态）
 /// 返回登录邮箱
 pub fn do_login() -> Result<String, String> {
-    let account = crate::oauth::login_codex()?;
+    do_login_with(&crate::oauth::StdinHooks)
+}
+
+/// 同上，交互经 hooks 注入（GUI 用弹窗版）；默认行为与 `do_login` 一致
+pub fn do_login_with(hooks: &dyn crate::oauth::LoginHooks) -> Result<String, String> {
+    let account = crate::oauth::login_codex_with(hooks)?;
     let email = account.email.clone();
     let current_id = crate::account::with_accounts_lock(|| {
         let mut file = crate::account::load_accounts()?;

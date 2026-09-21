@@ -1,5 +1,6 @@
 mod app;
 mod fonts;
+mod hooks;
 mod worker;
 
 fn main() -> eframe::Result<()> {

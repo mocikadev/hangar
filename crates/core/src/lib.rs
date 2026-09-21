@@ -23,6 +23,7 @@ pub use account::{
     switch_account, with_accounts_lock, Account, AccountsFile,
 };
 pub use login::do_login;
+pub use login::do_login_with;
 pub use oauth::login_codex;
 pub use oauth::{login_codex_with, LoginHooks};
 pub use process::codex_process_running;
