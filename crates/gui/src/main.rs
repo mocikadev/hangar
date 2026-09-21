@@ -1,6 +1,7 @@
 mod app;
 mod fonts;
 mod hooks;
+mod tray;
 mod worker;
 
 fn main() -> eframe::Result<()> {
@@ -13,11 +14,28 @@ fn main() -> eframe::Result<()> {
         app.busy = true;
         worker::spawn_quota(app.tx.clone(), ids);
     }
-    let opts = eframe::NativeOptions::default();
+    // 托盘命令通道先建好；托盘本体在 eframe 创建回调里启动（需要 egui::Context
+    // 在点击后 request_repaint 唤醒重绘循环，否则命令无人轮询）
+    let (tray_tx, tray_rx) = std::sync::mpsc::channel();
+    app.tray_rx = tray_rx;
+
+    let mut opts = eframe::NativeOptions::default();
+    #[cfg(target_os = "linux")]
+    {
+        // Wayland 下 winit 不支持客户端隐藏窗口（Visible(false) 被忽略），
+        // 强制走 XWayland/X11 后端，隐藏/显示行为与 Qt 应用（QQ 等）一致
+        use winit::platform::x11::EventLoopBuilderExtX11;
+        opts.event_loop_builder = Some(Box::new(|builder| {
+            builder.with_x11();
+        }));
+    }
+
     eframe::run_native(
         "hangar",
         opts,
         Box::new(move |cc| {
+            app.tray = tray::TrayHandle::spawn(tray_tx, cc.egui_ctx.clone());
+            app.sync_tray();
             // 深色主题 + 现代化控件样式
             cc.egui_ctx.set_theme(egui::Theme::Dark);
             cc.egui_ctx.all_styles_mut(|style| {

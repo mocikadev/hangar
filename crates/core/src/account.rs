@@ -55,6 +55,11 @@ fn switcher_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// hangar 数据目录（~/.hangar，700）。托盘设置、单实例锁与账号库同目录。
+pub fn hangar_dir() -> Result<PathBuf, String> {
+    switcher_dir()
+}
+
 fn accounts_path() -> Result<PathBuf, String> {
     Ok(switcher_dir()?.join("accounts.json"))
 }

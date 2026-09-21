@@ -12,4 +12,18 @@ path = "src/main.rs"
 hangar-core = { path = "../core" }
 eframe = "0.36"
 egui = "0.36"
+# 仅用 EventLoopBuilderExtX11 强制 X11 后端（与 eframe 内部同版本系）
+winit = "0.30"
 skrifa = "0.44"
+serde = { workspace = true }
+serde_json = { workspace = true }
+fs4 = "1.1"
+
+# Linux：ksni 走 SNI/DBus 协议（纯 Rust 无 C 依赖，musl 交叉编译不受影响）；
+# default-features 关掉 tokio，用 async-io 后端减小依赖树
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "0.3.6", default-features = false, features = ["blocking", "async-io"] }
+
+# Win/macOS：tauri tray-icon（Linux 走上面的 ksni，不引 GTK）
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+tray-icon = "0.25"

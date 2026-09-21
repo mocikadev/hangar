@@ -35,6 +35,10 @@ pub struct App {
     pub login_seq: u64,
     pub tx: Sender<Ev>,
     pub rx: Receiver<Ev>,
+    pub tray: Option<crate::tray::TrayHandle>,
+    pub tray_rx: Receiver<crate::tray::TrayCmd>,
+    /// 托盘「退出」置位：下次 Close 不再隐藏而是真退出
+    pub quit_requested: bool,
 }
 
 impl App {
@@ -53,6 +57,9 @@ impl App {
             login_seq: 0,
             tx,
             rx,
+            tray: None,
+            tray_rx: std::sync::mpsc::channel().1,
+            quit_requested: false,
         }
     }
 
@@ -69,6 +76,25 @@ impl App {
             .unwrap_or(false);
         if !alive {
             self.selected = self.accounts.first().map(|a| a.id.clone());
+        }
+        self.sync_tray();
+    }
+
+    /// 账号库 → 托盘菜单同步（激活账号打勾，tooltip 显示当前邮箱）
+    pub fn sync_tray(&self) {
+        if let Some(t) = &self.tray {
+            let items: Vec<(String, String, bool)> = self
+                .accounts
+                .iter()
+                .map(|a| {
+                    (
+                        a.id.clone(),
+                        a.email.clone(),
+                        Some(a.id.as_str()) == self.current.as_deref(),
+                    )
+                })
+                .collect();
+            t.update_accounts(&items);
         }
     }
 
@@ -218,6 +244,66 @@ impl App {
         self.busy = true;
         self.status = "切换中…".to_string();
         crate::worker::spawn_switch(self.tx.clone(), id);
+    }
+
+    /// 托盘菜单切换：同 do_switch 的守卫，但直接指定目标 id
+    fn switch_from_tray(&mut self, id: String) {
+        if self.busy {
+            return; // 上一动作未完成，忽略（托盘没有可禁用的按钮）
+        }
+        self.selected = Some(id.clone());
+        if Some(id.as_str()) == self.current.as_deref() {
+            self.status = "已是使用中的账号，无需切换".to_string();
+            return;
+        }
+        if self
+            .accounts
+            .iter()
+            .find(|a| a.id == id)
+            .is_some_and(|a| a.stale)
+        {
+            self.status = "该账号已失效，请先复活".to_string();
+            return;
+        }
+        self.busy = true;
+        self.status = "切换中…".to_string();
+        crate::worker::spawn_switch(self.tx.clone(), id);
+    }
+
+    /// 托盘命令轮询（ui/logic 共用；logic 中禁 UI，仅改状态/发视口命令）
+    fn poll_tray(&mut self, ctx: &egui::Context) {
+        while let Ok(cmd) = self.tray_rx.try_recv() {
+            match cmd {
+                crate::tray::TrayCmd::Switch(id) => self.switch_from_tray(id),
+                crate::tray::TrayCmd::ShowWindow => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                crate::tray::TrayCmd::Quit => {
+                    self.quit_requested = true;
+                    // 托盘关停放 on_exit：此处同步 wait ksni 收尾会在 UI 线程死等
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+        }
+    }
+
+    /// 关闭拦截：点窗口 × 不退出，隐藏到托盘（托盘「退出」置位后放行）。
+    /// 依赖 main.rs 强制 X11/XWayland 后端——Wayland 原生下 Visible(false) 被
+    /// winit 忽略（客户端不允许 unmap 自己），X11 下与 Qt 应用行为一致。
+    fn intercept_close(&mut self, ctx: &egui::Context) {
+        let close_requested = ctx.input(|i| i.viewport().close_requested());
+        if close_requested && !self.quit_requested {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+    }
+
+    /// 退出收尾：关停托盘服务，避免图标残留
+    fn shutdown_tray(&mut self) {
+        if let Some(t) = self.tray.take() {
+            t.shutdown();
+        }
     }
 
     /// 发起登录：`reauth` 为 Some(目标 id, 邮箱) 时复活，否则添加。
@@ -635,8 +721,24 @@ pub fn quota_summary(app: &App, id: &str) -> String {
 }
 
 impl eframe::App for App {
+    /// 退出收尾（点 × 放行 / 托盘退出 / 进程信号都会走到）：关停托盘防图标残留
+    fn on_exit(&mut self) {
+        self.shutdown_tray();
+    }
+
+    /// 窗口隐藏时仍被调用（有 request_repaint 才触发）：继续轮询托盘与后台事件，
+    /// 禁一切 UI/绘制。切号等动作照常生效，事件在下次显示时反映到界面。
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_tray(ctx);
+        while let Ok(ev) = self.rx.try_recv() {
+            self.reduce(ev);
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll();
+        self.poll_tray(ui.ctx());
+        self.intercept_close(ui.ctx());
         // 底部状态栏固定在窗口底部，主区占满剩余高度
         egui::containers::panel::Panel::bottom("status_bar").show(ui, |ui| {
             ui.add_space(4.0);
