@@ -4,6 +4,7 @@ mod commands;
 mod output;
 mod selector;
 mod tui;
+mod tui_overview;
 mod ui;
 
 use args::{Cli, Command};

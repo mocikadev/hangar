@@ -10,7 +10,7 @@
 use hangar_core as core;
 use hangar_core::account::Account;
 use hangar_core::quota::Quota;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Stdout;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -25,7 +25,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Terminal,
 };
 
@@ -59,8 +59,11 @@ struct App {
     confirm_delete: bool,
     doctor_view: Option<(Vec<String>, usize)>,
     quotas: HashMap<String, Quota>,
+    quota_pending: HashSet<String>,
+    quota_errors: HashMap<String, String>,
     quota_now: i64,
     quota_busy: bool,
+    log_expanded: bool,
     should_quit: bool,
     tick: u64,
     /// 命令面板状态：打开中 / 过滤词（None=选择模式，Some=过滤模式）
@@ -194,7 +197,7 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
         .constraints([
             Constraint::Length(1),
             Constraint::Min(8),
-            Constraint::Length(9),
+            Constraint::Length(if app.log_expanded { 9 } else { 3 }),
             Constraint::Length(1),
         ])
         .split(area);
@@ -230,62 +233,32 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
         title_row[1],
     );
 
-    // 主区：左列表右详情
+    // 主区：所有账号总览 + 选中账号的精确信息。总览承担跨账号比较，
+    // 详情只保留不适合塞进列中的重置时间与身份信息。
     let main = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
         .split(root[1]);
 
     let rows = app.filtered();
-    let items: Vec<ListItem> = if rows.is_empty() {
-        vec![ListItem::new(Line::styled(
-            "  （空）按 : 打开命令面板添加",
-            Style::default().fg(Color::DarkGray),
-        ))]
-    } else {
-        rows.iter()
-            .map(|&i| {
-                let a = &app.accounts[i];
-                let cur = Some(a.id.as_str()) == app.current.as_deref();
-                let mut spans = vec![Span::raw(format!("{} ", a.email))];
-                if cur {
-                    spans.push(Span::styled(
-                        "●",
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD),
-                    ));
-                }
-                if a.stale {
-                    spans.push(Span::styled(" ⚠", Style::default().fg(Color::Yellow)));
-                }
-                ListItem::new(Line::from(spans))
-            })
-            .collect()
-    };
-    let title = if app.filter.is_empty() {
-        format!(" 账号 ({}) ", app.accounts.len())
-    } else {
-        format!(" 账号 [{}] ", app.filter)
-    };
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title))
-        .highlight_style(
-            Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("› ");
-    let mut state = ListState::default();
-    if !rows.is_empty() {
-        state.select(Some(app.selected));
-    }
-    f.render_stateful_widget(list, main[0], &mut state);
+    crate::tui_overview::render(
+        f,
+        main[0],
+        crate::tui_overview::Overview {
+            accounts: &app.accounts,
+            visible: &rows,
+            current: app.current.as_deref(),
+            quotas: &app.quotas,
+            pending: &app.quota_pending,
+            errors: &app.quota_errors,
+            filter: &app.filter,
+        },
+        app.selected,
+    );
 
-    // 右：详情 + 配额
     let right = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(7), Constraint::Min(5)])
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
         .split(main[1]);
     let detail_lines: Vec<Line> = match app.selected_account() {
         None => vec![Line::styled(
@@ -294,17 +267,26 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
         )],
         Some(a) => {
             let now = App::now_secs();
-            // AT 过期时间以 access_token JWT 内的 exp 为准（真实寿命）；
-            // JWT 解析失败再退回本地簿记 expires_at，两者都无则显示未知
-            let at_exp = core::account::jwt_exp(&a.access_token).or(if a.expires_at > 0 {
-                Some(a.expires_at as i64)
-            } else {
-                None
-            });
-            let exp = match at_exp {
-                Some(ts) if ts <= now => "访问令牌已过期（切换时静默刷新）".to_string(),
-                Some(ts) => format!("访问令牌至 {}", core::quota::fmt_ts_local(ts)),
-                None => "访问令牌有效期未知".to_string(),
+            let health = core::token_health::assess(
+                &a.access_token,
+                &a.refresh_token,
+                a.expires_at,
+                a.stale,
+                now as u64,
+            );
+            let exp = match health.access {
+                core::token_health::AccessTokenState::Missing => "访问令牌缺失".to_string(),
+                core::token_health::AccessTokenState::Expired => {
+                    "访问令牌已过期（切换前必须刷新）".to_string()
+                }
+                core::token_health::AccessTokenState::Expiring => {
+                    "访问令牌即将过期（切换前必须刷新）".to_string()
+                }
+                core::token_health::AccessTokenState::Fresh => format!(
+                    "访问令牌至 {}",
+                    core::quota::fmt_ts_local(health.expires_at.unwrap_or_default())
+                ),
+                core::token_health::AccessTokenState::Unknown => "访问令牌有效期未知".to_string(),
             };
             let plan = app
                 .quotas
@@ -329,6 +311,11 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
                     }
                 )),
                 Line::raw(format!("  计划: {}", plan)),
+                Line::raw(format!(
+                    "  身份: {} / {}",
+                    a.account_id.as_deref().unwrap_or("-"),
+                    a.organization_id.as_deref().unwrap_or("-")
+                )),
                 Line::from(vec![
                     Span::raw("  状态: "),
                     if a.stale {
@@ -450,7 +437,7 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
     } else if app.palette_open {
         "  命令面板：输入过滤 回车执行 ESC 关闭"
     } else {
-        "  j/k 移动  / 过滤  回车切换  : 命令（添加/复活/删除/配额/自检）  q 退出"
+        "  j/k 移动  / 过滤  回车切换  : 命令  l 展开日志  q 退出"
     };
     f.render_widget(
         Paragraph::new(Line::styled(help, Style::default().fg(Color::DarkGray))),
@@ -605,8 +592,11 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
         confirm_delete: false,
         doctor_view: None,
         quotas: HashMap::new(),
+        quota_pending: HashSet::new(),
+        quota_errors: HashMap::new(),
         quota_now: App::now_secs(),
         quota_busy: false,
+        log_expanded: false,
         should_quit: false,
         tick: 0,
         palette_open: false,
@@ -621,6 +611,8 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
     let startup = startup_quota_target(&app);
     if let Some(startup) = startup {
         app.quota_busy = true;
+        app.quota_pending.insert(startup.0.clone());
+        app.quota_errors.remove(&startup.0);
         spawn_quota(app.tx.clone(), vec![startup]);
     }
 
@@ -643,12 +635,20 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
                     }
                     app.reload();
                 }
-                Ev::QuotaOne { id, email, res } => match res {
-                    Ok(q) => {
-                        app.quotas.insert(id, q);
+                Ev::QuotaOne { id, email, res } => {
+                    app.quota_pending.remove(&id);
+                    match res {
+                        Ok(q) => {
+                            app.quota_errors.remove(&id);
+                            app.quotas.insert(id, q);
+                        }
+                        Err(e) => {
+                            app.quotas.remove(&id);
+                            app.quota_errors.insert(id, e.clone());
+                            app.push_log(format!("✗ {}：{}", email, e));
+                        }
                     }
-                    Err(e) => app.push_log(format!("✗ {}：{}", email, e)),
-                },
+                }
                 Ev::QuotaDone => {
                     app.quota_busy = false;
                     app.quota_now = App::now_secs();
@@ -834,6 +834,9 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
                 app.palette_open = true;
                 app.palette_input = None;
                 app.palette_sel = 0;
+            }
+            KeyCode::Char('l') | KeyCode::Char('L') => {
+                app.log_expanded = !app.log_expanded;
             }
             KeyCode::Enter => {
                 let sel = app.selected_account().map(|a| {
@@ -1102,6 +1105,8 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
                 .map(|a| (a.id.clone(), a.email.clone()));
             if let Some(target) = target {
                 app.quota_busy = true;
+                app.quota_pending.insert(target.0.clone());
+                app.quota_errors.remove(&target.0);
                 app.push_log(format!("开始查询 {} 的配额…", target.1));
                 spawn_quota(app.tx.clone(), vec![target]);
             } else {
@@ -1123,6 +1128,10 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
                 app.push_log("ℹ 没有可查的账号".to_string());
             } else {
                 app.quota_busy = true;
+                for (id, _) in &ids {
+                    app.quota_pending.insert(id.clone());
+                    app.quota_errors.remove(id);
+                }
                 app.push_log(format!("开始查询 {} 个账号配额…", ids.len()));
                 spawn_quota(app.tx.clone(), ids);
             }
@@ -1131,11 +1140,17 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
             Ok((lines, _)) => app.doctor_view = Some((lines, 0)),
             Err(e) => app.push_log(format!("✗ {}", e)),
         },
-        Action::Harvest => {
-            core::account::harvest();
-            app.reload();
-            app.push_log("已从官方 auth.json 收敛".to_string());
-        }
+        Action::Harvest => match core::account::harvest_checked() {
+            Ok(report) => {
+                app.reload();
+                app.push_log(format!(
+                    "✅ 已从官方 auth.json 收敛（{} 个账号{}）",
+                    report.account_count,
+                    if report.changed { "，有更新" } else { "" }
+                ));
+            }
+            Err(error) => app.push_log(format!("✗ 收敛失败：{error}")),
+        },
         Action::Update => {
             app.busy = Some("检查更新中…".to_string());
             spawn_update(app.tx.clone());
@@ -1178,8 +1193,11 @@ mod tests {
             confirm_delete: false,
             doctor_view: None,
             quotas: HashMap::new(),
+            quota_pending: HashSet::new(),
+            quota_errors: HashMap::new(),
             quota_now: 0,
             quota_busy: false,
+            log_expanded: false,
             should_quit: false,
             tick: 0,
             palette_open: false,
@@ -1191,7 +1209,11 @@ mod tests {
     }
 
     fn screen_text(app: &mut App) -> String {
-        let backend = TestBackend::new(120, 40);
+        screen_text_size(app, 120, 40)
+    }
+
+    fn screen_text_size(app: &mut App, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
         let mut term = Terminal::new(backend).unwrap();
         term.draw(|f| draw_ui(f, app)).unwrap();
         term.backend()
@@ -1214,6 +1236,10 @@ mod tests {
         assert!(t.contains('配'), "missing quota pane");
         assert!(t.contains("hello log"), "missing log");
         assert!(t.contains("j/k"), "missing help");
+        assert!(t.contains("AT"), "missing token health column");
+        assert!(t.contains("RT"), "missing refresh availability column");
+        assert!(t.contains("unknown"), "missing local token health");
+        assert!(!t.contains("0%"), "unloaded quota must not look exhausted");
     }
 
     #[test]
@@ -1225,6 +1251,39 @@ mod tests {
         assert_eq!(app.filtered(), vec![1]);
         let t = screen_text(&mut app);
         assert!(t.contains("bob@example.com"));
+    }
+
+    #[test]
+    fn overview_distinguishes_pending_failure_and_unloaded_quota() {
+        let mut app = fake_app();
+        app.quota_pending.insert("id-1".to_string());
+        app.quota_errors
+            .insert("id-2".to_string(), "network".to_string());
+        let text = screen_text(&mut app);
+        assert!(text.contains('查'), "pending quota should be visible");
+        assert!(text.contains('失'), "failed quota should be visible");
+        assert!(
+            !text.contains("0%"),
+            "unknown quota must never render as 0%"
+        );
+    }
+
+    #[test]
+    fn overview_handles_narrow_and_ten_account_screens() {
+        let mut app = fake_app();
+        app.accounts = (0..10)
+            .map(|index| {
+                fake_account(
+                    &format!("id-{index}"),
+                    &format!("user{index}@example.com"),
+                    false,
+                )
+            })
+            .collect();
+        let narrow = screen_text_size(&mut app, 70, 30);
+        assert!(narrow.contains("user0@example.com"));
+        let normal = screen_text_size(&mut app, 120, 40);
+        assert!(normal.contains("user9@example.com"));
     }
 
     #[test]
