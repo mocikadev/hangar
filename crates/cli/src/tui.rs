@@ -39,6 +39,7 @@ enum Ev {
     },
     QuotaOne {
         id: String,
+        email: String,
         res: Result<Quota, String>,
     },
     QuotaDone,
@@ -59,6 +60,7 @@ struct App {
     doctor_view: Option<(Vec<String>, usize)>,
     quotas: HashMap<String, Quota>,
     quota_now: i64,
+    quota_busy: bool,
     should_quit: bool,
     tick: u64,
     /// 命令面板状态：打开中 / 过滤词（None=选择模式，Some=过滤模式）
@@ -200,6 +202,10 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
     // 标题（单行无边框：左品牌，右状态）
     let title_right = match &app.busy {
         Some(b) => format!("{} {}", SPINNER[(app.tick / 2) as usize % SPINNER.len()], b),
+        None if app.quota_busy => format!(
+            "{} 配额查询中…",
+            SPINNER[(app.tick / 2) as usize % SPINNER.len()]
+        ),
         None => "就绪".to_string(),
     };
     let title_row = Layout::default()
@@ -538,9 +544,9 @@ fn spawn_switch(tx: Sender<Ev>, id: String) {
 fn spawn_quota(tx: Sender<Ev>, ids: Vec<(String, String)>) {
     std::thread::spawn(move || {
         crate::ui::set_quiet(true);
-        for (id, _email) in ids {
+        for (id, email) in ids {
             let res = core::quota::fetch_quota_for_account(&id).map(|(_, q)| q);
-            if tx.send(Ev::QuotaOne { id, res }).is_err() {
+            if tx.send(Ev::QuotaOne { id, email, res }).is_err() {
                 return;
             }
         }
@@ -563,6 +569,14 @@ fn spawn_update(tx: Sender<Ev>) {
         };
         let _ = tx.send(Ev::UpdateDone { res });
     });
+}
+
+fn startup_quota_target(app: &App) -> Option<(String, String)> {
+    app.current
+        .as_deref()
+        .and_then(|id| app.accounts.iter().find(|a| a.id == id && !a.stale))
+        .or_else(|| app.accounts.iter().find(|a| !a.stale))
+        .map(|a| (a.id.clone(), a.email.clone()))
 }
 
 pub fn run() -> Result<(), String> {
@@ -592,6 +606,7 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
         doctor_view: None,
         quotas: HashMap::new(),
         quota_now: App::now_secs(),
+        quota_busy: false,
         should_quit: false,
         tick: 0,
         palette_open: false,
@@ -602,16 +617,11 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
     };
     core::account::harvest();
     app.reload();
-    // 启动即后台静默查一次全量配额（右侧不再空白）；busy 提示，按完即走
-    let startup_ids: Vec<(String, String)> = app
-        .accounts
-        .iter()
-        .filter(|a| !a.stale)
-        .map(|a| (a.id.clone(), a.email.clone()))
-        .collect();
-    if !startup_ids.is_empty() {
-        app.busy = Some("同步配额中…".to_string());
-        spawn_quota(app.tx.clone(), startup_ids);
+    // 启动只查当前账号；没有 current 时查第一个正常账号。网络任务不锁住浏览操作。
+    let startup = startup_quota_target(&app);
+    if let Some(startup) = startup {
+        app.quota_busy = true;
+        spawn_quota(app.tx.clone(), vec![startup]);
     }
 
     while !app.should_quit {
@@ -633,14 +643,14 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
                     }
                     app.reload();
                 }
-                Ev::QuotaOne { id, res } => match res {
+                Ev::QuotaOne { id, email, res } => match res {
                     Ok(q) => {
                         app.quotas.insert(id, q);
                     }
-                    Err(e) => app.push_log(format!("✗ {}", e)),
+                    Err(e) => app.push_log(format!("✗ {}：{}", email, e)),
                 },
                 Ev::QuotaDone => {
-                    app.busy = None;
+                    app.quota_busy = false;
                     app.quota_now = App::now_secs();
                     app.push_log("✅ 配额查询完成".to_string());
                 }
@@ -842,6 +852,10 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
                         // 还可能在 Codex 刚轮换 token 的瞬间覆盖它，纯多余动作
                         app.push_log(format!("ℹ {} 已是使用中的账号，无需切换", email));
                         let _ = id;
+                    } else if app.quota_busy {
+                        app.push_log(
+                            "ℹ 配额查询期间可继续浏览；请等待查询结束后再切换账号".to_string(),
+                        );
                     } else {
                         app.busy = Some(format!("切换到 {}…", email));
                         spawn_switch(app.tx.clone(), id);
@@ -863,7 +877,8 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
 enum Action {
     Add,
     Reauth,
-    Quota,
+    QuotaCurrent,
+    QuotaAll,
     Doctor,
     Harvest,
     Delete,
@@ -879,7 +894,7 @@ struct PaletteItem {
 const PALETTE: &[PaletteItem] = &[
     PaletteItem {
         label: "添加账号",
-        hint: "打开浏览器 OAuth 登录并自动切换",
+        hint: "打开浏览器 OAuth 登录，仅添加不切换",
         action: Action::Add,
     },
     PaletteItem {
@@ -893,9 +908,14 @@ const PALETTE: &[PaletteItem] = &[
         action: Action::Delete,
     },
     PaletteItem {
-        label: "查询配额",
-        hint: "刷新全部账号的用量与重置时间",
-        action: Action::Quota,
+        label: "刷新当前配额",
+        hint: "只查询选中账号的用量与重置时间",
+        action: Action::QuotaCurrent,
+    },
+    PaletteItem {
+        label: "刷新全部配额",
+        hint: "逐个查询全部正常账号，不锁住浏览",
+        action: Action::QuotaAll,
     },
     PaletteItem {
         label: "自检",
@@ -987,6 +1007,15 @@ fn render_palette(f: &mut ratatui::Frame, app: &mut App) {
 }
 
 fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, action: Action) {
+    if app.quota_busy
+        && !matches!(
+            action,
+            Action::QuotaCurrent | Action::QuotaAll | Action::Doctor
+        )
+    {
+        app.push_log("ℹ 配额查询期间可继续浏览；写操作请等待查询结束".to_string());
+        return;
+    }
     match action {
         Action::Add => {
             let r = suspend(term, core::do_login);
@@ -1062,7 +1091,28 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
                 None => app.push_log("ℹ 没有选中账号".to_string()),
             }
         }
-        Action::Quota => {
+        Action::QuotaCurrent => {
+            if app.quota_busy {
+                app.push_log("ℹ 配额查询正在进行中".to_string());
+                return;
+            }
+            let target = app
+                .selected_account()
+                .filter(|a| !a.stale)
+                .map(|a| (a.id.clone(), a.email.clone()));
+            if let Some(target) = target {
+                app.quota_busy = true;
+                app.push_log(format!("开始查询 {} 的配额…", target.1));
+                spawn_quota(app.tx.clone(), vec![target]);
+            } else {
+                app.push_log("ℹ 选中账号已失效或不存在，无法查询配额".to_string());
+            }
+        }
+        Action::QuotaAll => {
+            if app.quota_busy {
+                app.push_log("ℹ 配额查询正在进行中".to_string());
+                return;
+            }
             let ids: Vec<(String, String)> = app
                 .accounts
                 .iter()
@@ -1072,7 +1122,7 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
             if ids.is_empty() {
                 app.push_log("ℹ 没有可查的账号".to_string());
             } else {
-                app.busy = Some("查询配额中…".to_string());
+                app.quota_busy = true;
                 app.push_log(format!("开始查询 {} 个账号配额…", ids.len()));
                 spawn_quota(app.tx.clone(), ids);
             }
@@ -1129,6 +1179,7 @@ mod tests {
             doctor_view: None,
             quotas: HashMap::new(),
             quota_now: 0,
+            quota_busy: false,
             should_quit: false,
             tick: 0,
             palette_open: false,
@@ -1220,5 +1271,29 @@ mod tests {
         let vis = palette_visible(&app);
         assert_eq!(vis.len(), 1);
         assert_eq!(PALETTE[vis[0]].action, Action::Update);
+    }
+
+    #[test]
+    fn startup_quota_prefers_current_and_falls_back_to_first_healthy() {
+        let mut app = fake_app();
+        assert_eq!(startup_quota_target(&app).unwrap().0, "id-1");
+        app.current = Some("id-2".to_string());
+        assert_eq!(startup_quota_target(&app).unwrap().0, "id-1");
+        app.accounts[0].stale = true;
+        assert!(startup_quota_target(&app).is_none());
+    }
+
+    #[test]
+    fn palette_has_separate_current_and_all_quota_actions() {
+        let mut app = fake_app();
+        app.palette_input = Some("当前配额".to_string());
+        let current = palette_visible(&app);
+        assert_eq!(current.len(), 1);
+        assert_eq!(PALETTE[current[0]].action, Action::QuotaCurrent);
+
+        app.palette_input = Some("全部配额".to_string());
+        let all = palette_visible(&app);
+        assert_eq!(all.len(), 1);
+        assert_eq!(PALETTE[all[0]].action, Action::QuotaAll);
     }
 }

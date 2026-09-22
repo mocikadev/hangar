@@ -7,6 +7,10 @@
 ```
 ┌─────────────────── crates/cli（bin: hangar）───────────────────┐
 │  main.rs      入口：TTY 检测 → tui::run() / classic_loop()             │
+│  args.rs      一次性 CLI 参数协议与兼容 flags                           │
+│  commands.rs  子命令用例编排、退出语义                                  │
+│  selector.rs  账号 ID/唯一邮箱选择器                                    │
+│  output.rs    human/JSON 脱敏输出                                       │
 │  tui.rs       全屏 TUI（ratatui）：列表/详情/配额/命令面板/覆盖层        │
 │  classic.rs   经典菜单：stdin 编号交互（非 TTY / --classic 回退）        │
 │  ui.rs        ANSI 样式包装（经典模式）；静默开关代理自 core::emit       │
@@ -38,6 +42,14 @@
 - `core` 不依赖任何前端 crate；前端不绕过 core 直接读写账号库
 - 业务提示一律走 `emit::emit/emit_err`（可被 TUI 静默）；只有前端做 ANSI 着色
 - 三个用户界面共享 `do_login/doctor_lines/switch_account` 等组合函数，不允许复制业务逻辑
+- v0.5 起 GUI 冻结为维护模式；一次性 CLI 与 TUI 是新能力主入口，classic 仅保留基础兼容
+
+### CLI 协议边界
+
+- 参数解析、账号选择、输出格式和退出码属于 `crates/cli`，不得进入 core
+- core 的 `Account` 含明文凭据，禁止直接序列化到 stdout；JSON 必须映射为显式脱敏对象
+- 一次性命令不隐式自升级；默认无子命令时才沿用 TTY → TUI、非 TTY → classic 的交互分发
+- selector 只接受完整内部 ID或唯一邮箱；歧义时失败，不使用易漂移的列表编号
 
 ## 关键机制
 

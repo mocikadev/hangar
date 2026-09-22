@@ -36,7 +36,7 @@
 - **S11 顺序不可倒置**：刷新后先 `save_accounts_unlocked` 落库，再写官方 auth.json
 - **守卫完备性**：任何会写官方 auth.json 的操作必须先检查 `stale` + 空 AT + "使用中"拦截；新增写路径时逐条核对
 - **容错解析**：wham/usage 等非公开契约接口，字段缺失显示"未知"，不许 `unwrap` 崩溃
-- **UI 无关**：业务函数不得 `println!`，一律 `crate::emit::emit/emit_err`；新增用户可见业务行为需同步评估 TUI、classic 与 GUI
+- **UI 无关**：业务函数不得 `println!`，一律 `crate::emit::emit/emit_err`；v0.5 新能力同步评估一次性 CLI 与 TUI。classic 保留基础兼容，GUI 冻结为维护模式；共享 core 变化仍须做 GUI 回归
 - **兼容老库**：`Account` 新字段必须 `#[serde(default)]`；不能假定 account_id/organization_id 存在
 - **时间展示**：统一走 `quota::fmt_ts_local`（本地时区具体日期时间），不引 chrono
 - **无头/管道安全**：`stdin` EOF 优雅退出；`stdout flush` 不 `unwrap`（EPIPE）
@@ -53,7 +53,8 @@ cargo clippy -- -D warnings
 cargo test             # 全部单测（core + cli）
 ```
 
-- 涉及 TUI 的变更额外做 tmux 冒烟；涉及 GUI/托盘的变更在对应平台做真机冒烟，并声明"验了什么/没验什么"
+- 涉及 TUI 的变更额外做终端冒烟；涉及 GUI/托盘的变更在对应平台做真机冒烟，并声明"验了什么/没验什么"
+- 一次性 CLI 的文件写入测试必须使用隔离 `HOME`/`CODEX_HOME`；JSON 输出测试必须断言不含 access/refresh/id token
 - 涉及真实凭据链路（登录/刷新/配额成功路径）无法离线验证时，明确请用户在真机操作并回报输出；不得用编造的 expires_at/token 宣称"测试通过"
 
 ## 快速路径

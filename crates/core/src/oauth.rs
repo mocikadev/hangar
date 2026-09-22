@@ -85,15 +85,16 @@ pub struct StdinHooks;
 
 impl LoginHooks for StdinHooks {
     fn show_auth_url(&self, url: &str) {
-        println!("{}", url);
+        crate::emit::emit_err(url.to_string());
     }
 
     fn prompt_callback(&self, _state: &str) -> Option<String> {
-        use std::io::{self, Write};
-        println!("浏览器回调未收到（可能端口/跳转被拦截）。");
-        println!("可将浏览器地址栏的完整回调 URL 粘贴到此处（直接回车放弃）：");
-        print!("回调 URL> ");
-        let _ = io::stdout().flush();
+        use std::io;
+        crate::emit::emit_err("浏览器回调未收到（可能端口/跳转被拦截）。".to_string());
+        crate::emit::emit_err(
+            "可将浏览器地址栏的完整回调 URL 粘贴到此处（直接回车放弃）：".to_string(),
+        );
+        crate::emit::emit_err("回调 URL>".to_string());
         let mut line = String::new();
         if io::stdin().read_line(&mut line).unwrap_or(0) == 0 {
             return None;
@@ -163,10 +164,10 @@ pub fn login_codex_with(hooks: &dyn LoginHooks) -> Result<Account, String> {
     // 的回调线程，否则线程泄漏、端口被占，重试登录必然失败
     let (server, callback_port) = bind_callback_server()?;
     if callback_port != CALLBACK_PORT {
-        println!(
+        crate::emit::emit_err(format!(
             "端口 {} 被占用，已改用官方备用端口 {} 继续登录",
             CALLBACK_PORT, callback_port
-        );
+        ));
     }
     let redirect_uri = format!("http://localhost:{}/auth/callback", callback_port);
 
@@ -202,9 +203,9 @@ pub fn login_codex_with(hooks: &dyn LoginHooks) -> Result<Account, String> {
 
     // 4. 打开浏览器（无头机无浏览器时打印 URL 手动复制，不阻断）
     if open::that(&final_url).is_err() {
-        println!("无法自动打开浏览器，请手动访问以下地址完成授权：");
+        crate::emit::emit_err("无法自动打开浏览器，请手动访问以下地址完成授权：".to_string());
     } else {
-        println!("已打开浏览器进行授权，请在 5 分钟内完成登录...");
+        crate::emit::emit_err("已打开浏览器进行授权，请在 5 分钟内完成登录...".to_string());
     }
     hooks.show_auth_url(&final_url);
 
@@ -312,7 +313,7 @@ pub fn login_codex_with(hooks: &dyn LoginHooks) -> Result<Account, String> {
         .ok_or_else(|| "未获取到授权码".to_string())?;
 
     // 7. 换取 token
-    println!("授权成功，正在获取 token...");
+    crate::emit::emit_err("授权成功，正在获取 token...".to_string());
     let token = exchange_code_for_token(&code, &redirect_uri, &code_verifier)?;
 
     // 8. 获取用户邮箱
@@ -486,7 +487,7 @@ mod tests {
         struct StdinHooks;
         impl LoginHooks for StdinHooks {
             fn show_auth_url(&self, url: &str) {
-                println!("{}", url);
+                crate::emit::emit_err(url.to_string());
             }
             fn prompt_callback(&self, _state: &str) -> Option<String> {
                 None

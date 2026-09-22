@@ -5,7 +5,7 @@
 ## 项目概览
 
 **hangar** — OpenAI Codex 多账号管理 CLI/TUI/GUI 工具：免重复登录地在多个 ChatGPT 账号间切换，官方 `auth.json` 为唯一权威，本工具负责缓存、收敛与投影。
-当前状态：**v0.3.1 已发布，v0.4.0 收口中**（三前端、配额、守卫与 Linux/macOS 托盘已落地；本轮仅发布 Linux/macOS，Windows 资产与真机验收延期，进度见 `docs/design/v0.4.0-closure-plan.md`）
+当前状态：**v0.4.0 已发布，v0.5.0 CLI/TUI 演进中**（新增可脚本化一次性命令与 JSON 输出；GUI 冻结为维护模式，计划见 `docs/design/v0.5.0-cli-tui-plan.md`）
 
 ## 技术栈
 
@@ -43,7 +43,7 @@ cargo test                                 # 3. 全部单测（core + cli + gui�
 - **S11 写入顺序**：切换/刷新后**先写账号库、后写官方 auth.json**；倒置会在崩溃时丢 RT 并误标 stale（`docs/design/scenarios.md` S11）
 - **OAuth 白名单**：`redirect_uri` 仅 `http://localhost:{1455,1457}/auth/callback`，改端口/路径/域名即登录失败
 - **跨文件同步**：改 `Account` 结构（`crates/core/src/account.rs`）→ 同步检查 TUI/classic/GUI 三前端引用与 `#[serde(default)]` 老库兼容；改场景状态 → 同步 `docs/design/scenarios.md`
-- **三前端对等**：新增用户可见业务能力必须同步评估 TUI、classic 与 GUI；平台专属能力需在设计中明确例外
+- **前端演进边界**：v0.5 起新能力只要求一次性 CLI 与 TUI 对等；classic 保留基础兼容，GUI 冻结为维护模式。共享 core 变更仍须运行 GUI 编译/测试回归
 - **明文安全模型**：凭据明文存储，靠目录 700/文件 600；错误输出只记 `status+error_code+body_len`，禁止打印 token/body
 - **非公开契约**：wham/usage 等接口响应全容错解析，字段缺失显示"未知"，不许 panic
 
@@ -67,6 +67,7 @@ cargo test              # 单测（core + cli + gui）
 | 技术设计（架构/机制/外部接口） | `docs/design/architecture.md` |
 | 测试策略与验收清单 | `docs/quality/test-strategy.md` |
 | v0.4.0 收口计划 | `docs/design/v0.4.0-closure-plan.md` |
+| v0.5.0 CLI/TUI 计划 | `docs/design/v0.5.0-cli-tui-plan.md` |
 
 ## Skills 导航
 
@@ -75,4 +76,3 @@ cargo test              # 单测（core + cli + gui）
 | Skill | 触发场景 | 放置路径 | 原因 |
 |-------|----------|----------|------|
 | `release-check` | 准备、审计或排查 release 包时 | `.opencode/skills/release-check/SKILL.md` | 固化质量门禁、跨平台冒烟、资产/SHA 校验与发布回读 |
-| `tui-smoke-test` | 验证 TUI 变更时 | `.opencode/skills/tui-smoke-test/SKILL.md` | tmux 会话脚本化验证（send-keys/capture-pane/转义检查），顺序敏感易漏步骤 |

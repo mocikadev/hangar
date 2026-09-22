@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | 
 
 ### 桌面版（GUI）
 
-在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（v0.4.0 提供 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`；Windows GUI 资产延期），装完从应用列表启动 hangar，能力与命令行版一致，更新也在应用内提示后手动装新包。
+在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（v0.4.0 提供 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`；Windows GUI 资产延期）。GUI 继续维护现有账号、配额与托盘能力；后续新增的自动化能力优先进入 CLI/TUI。
 
 ### 更新
 
@@ -60,6 +60,23 @@ hangar --classic       # 经典菜单
 hangar --version       # 查看版本
 hangar --check-update  # 检查并升级
 ```
+
+当前 `main` 分支正在完善 v0.5.0 的一次性命令，可用于脚本和自动化：
+
+```bash
+hangar list --json
+hangar current
+hangar switch <完整账号ID或唯一邮箱>
+hangar quota [<完整账号ID或唯一邮箱>|--all] --json
+hangar login
+hangar reauth <完整账号ID或唯一邮箱>
+hangar remove <完整账号ID或唯一邮箱> --yes
+hangar doctor
+hangar harvest
+hangar update
+```
+
+一次性命令不会在执行前隐式升级。JSON 只包含脱敏后的账号和配额信息；selector 不存在或同邮箱对应多个账号时会失败，不会猜测目标。退出码为：`0` 成功、`2` 参数错误、`3` 账号选择或状态错误、`4` 凭据需重新登录、`5` 网络/外部服务错误、`1` 其他内部错误。
 
 ### TUI 快捷键
 

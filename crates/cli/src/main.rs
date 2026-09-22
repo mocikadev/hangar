@@ -1,86 +1,149 @@
+mod args;
 mod classic;
+mod commands;
+mod output;
+mod selector;
 mod tui;
 mod ui;
 
+use args::{Cli, Command};
+use clap::{error::ErrorKind as ClapErrorKind, Parser};
 use hangar_core as core;
-
-#[derive(Debug, Default)]
-struct Flags {
-    classic: bool,
-    show_version: bool,
-    no_update: bool,
-    check_update: bool,
-}
-
-fn parse_flags(args: &[String]) -> Flags {
-    let mut f = Flags::default();
-    for a in args.iter().skip(1) {
-        match a.as_str() {
-            "--classic" => f.classic = true,
-            "--version" | "-V" => f.show_version = true,
-            "--no-update" => f.no_update = true,
-            "--check-update" => f.check_update = true,
-            _ => {}
-        }
-    }
-    if !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
-        f.classic = true;
-    }
-    f
-}
+use std::io::IsTerminal;
 
 fn main() {
-    let flags = parse_flags(&std::env::args().collect::<Vec<_>>());
-    if flags.show_version {
-        println!("hangar {}", env!("CARGO_PKG_VERSION"));
-        return;
+    let raw: Vec<_> = std::env::args_os().collect();
+    let wants_json = raw.iter().any(|arg| arg == "--json");
+    match Cli::try_parse_from(raw) {
+        Ok(cli) => dispatch(cli),
+        Err(error)
+            if matches!(
+                error.kind(),
+                ClapErrorKind::DisplayHelp | ClapErrorKind::DisplayVersion
+            ) =>
+        {
+            let exit_code = error.exit_code();
+            let _ = error.print();
+            std::process::exit(exit_code);
+        }
+        Err(error) if wants_json => {
+            exit_error(commands::ErrorKind::Usage, &error.to_string(), true);
+        }
+        Err(error) => error.exit(),
     }
-    // Windows 残留 hangar.old 清理（最佳努力，永不报错）
-    core::updater::cleanup_pending_old();
-    if flags.check_update {
-        match core::updater::check_update(true, env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME")) {
-            Ok(Some(info)) => match core::updater::apply_update(&info) {
-                Ok(v) => {
-                    println!("已升级到 {}", v);
-                    std::process::exit(0);
-                }
-                Err(e) => {
-                    eprintln!("更新失败：{}（旧版继续可用）", e);
-                    std::process::exit(1);
-                }
-            },
-            Ok(None) => {
-                println!("已是最新版本");
-                std::process::exit(0);
+}
+
+fn dispatch(cli: Cli) {
+    if cli.check_update && cli.command.is_some() {
+        exit_error(
+            commands::ErrorKind::Usage,
+            "--check-update 不能与子命令同时使用",
+            cli.json,
+        );
+    }
+    if cli.classic && cli.command.is_some() {
+        exit_error(
+            commands::ErrorKind::Usage,
+            "--classic 不能与子命令同时使用",
+            cli.json,
+        );
+    }
+
+    let command = if cli.check_update {
+        Some(Command::Update)
+    } else if cli.classic {
+        Some(Command::Classic)
+    } else {
+        cli.command
+    };
+
+    match command {
+        Some(Command::Tui) => {
+            if cli.json {
+                exit_error(commands::ErrorKind::Usage, "tui 不支持 --json", true);
             }
-            Err(e) => {
-                eprintln!("检查更新失败：{}", e);
-                std::process::exit(1);
+            if !std::io::stdout().is_terminal() {
+                exit_error(
+                    commands::ErrorKind::Usage,
+                    "tui 需要交互式终端；非 TTY 请使用一次性命令或 classic",
+                    false,
+                );
+            }
+            cleanup_and_maybe_update(cli.no_update);
+            run_tui();
+        }
+        Some(Command::Classic) => {
+            if cli.json {
+                exit_error(commands::ErrorKind::Usage, "classic 不支持 --json", true);
+            }
+            cleanup_and_maybe_update(cli.no_update);
+            classic_loop();
+        }
+        Some(command) => {
+            core::updater::cleanup_pending_old();
+            if let Err(error) = commands::execute(command, cli.json) {
+                exit_error(error.kind, &error.message, cli.json);
+            }
+        }
+        None => {
+            if cli.json {
+                exit_error(
+                    commands::ErrorKind::Usage,
+                    "--json 必须与一次性子命令一起使用",
+                    true,
+                );
+            }
+            cleanup_and_maybe_update(cli.no_update);
+            if std::io::stdout().is_terminal() {
+                run_tui();
+            } else {
+                classic_loop();
             }
         }
     }
-    let skip_update = flags.no_update
+}
+
+fn exit_error(kind: commands::ErrorKind, message: &str, json: bool) -> ! {
+    if json {
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "ok": false,
+                "code": kind as i32,
+                "error": message,
+            })
+        );
+    } else {
+        eprintln!("{message}");
+    }
+    std::process::exit(kind as i32);
+}
+
+fn cleanup_and_maybe_update(skip_update: bool) {
+    core::updater::cleanup_pending_old();
+    let skip_update = skip_update
         || std::env::var("HANGAR_NO_UPDATE")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-    if !skip_update {
-        match core::updater::check_update(false, env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"))
-        {
-            Ok(Some(info)) => match core::updater::apply_update(&info) {
-                Ok(v) => {
-                    println!("已升级到 {}，请重新运行 hangar 生效", v);
-                    std::process::exit(0);
-                }
-                Err(e) => eprintln!("自动更新失败：{}（继续使用旧版）", e),
-            },
-            Ok(None) => {}
-            Err(e) => eprintln!("检查更新失败：{}（继续启动）", e),
-        }
+    if skip_update {
+        return;
     }
-    if flags.classic {
-        classic_loop();
-    } else if let Err(e) = tui::run() {
-        eprintln!("TUI 启动失败（{}），回退经典模式", e);
+    match core::updater::check_update(false, env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME")) {
+        Ok(Some(info)) => match core::updater::apply_update(&info) {
+            Ok(version) => {
+                println!("已升级到 {version}，请重新运行 hangar 生效");
+                std::process::exit(0);
+            }
+            Err(error) => eprintln!("自动更新失败：{error}（继续使用旧版）"),
+        },
+        Ok(None) => {}
+        Err(error) => eprintln!("检查更新失败：{error}（继续启动）"),
+    }
+}
+
+fn run_tui() {
+    if let Err(error) = tui::run() {
+        eprintln!("TUI 启动失败（{error}），回退经典模式");
         classic_loop();
     }
 }
@@ -88,26 +151,11 @@ fn main() {
 fn classic_loop() {
     ui::banner();
     loop {
-        // 每次交互前重新收敛：本进程是常驻菜单循环（非一次性命令），
-        // 若只在启动 harvest 一次，长会话期间 Codex 轮换 RT 后再切换会用旧 RT
-        // 刷新 → 误标 stale。无变化时 harvest 静默，开销仅两次文件读
+        // 每次交互前重新收敛：长会话期间 Codex 可能轮换 refresh token。
         core::account::harvest();
-        if let Err(e) = classic::show_menu_and_handle() {
-            eprintln!("  {}", ui::error(&e));
+        if let Err(error) = classic::show_menu_and_handle() {
+            eprintln!("  {}", ui::error(&error));
         }
         println!();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn flags_parse() {
-        assert!(parse_flags(&["hangar".into(), "--version".into()]).show_version);
-        assert!(parse_flags(&["hangar".into(), "--no-update".into()]).no_update);
-        assert!(parse_flags(&["hangar".into(), "--check-update".into()]).check_update);
-        assert!(parse_flags(&["hangar".into(), "--classic".into()]).classic);
     }
 }
