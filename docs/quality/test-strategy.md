@@ -2,7 +2,7 @@
 
 ## 现状
 
-- 当前 workspace 为 64 项自动化测试（hangar-core 28 + CLI 单元 14 + CLI 二进制集成 9 + GUI 13），`cargo test` 单命令运行
+- 当前 workspace 为 73 项自动化测试（hangar-core 33 + CLI 单元 17 + CLI 二进制集成 10 + GUI 13），`cargo test` 单命令运行
 - GitHub Actions 在 Linux/macOS/Windows 跑 clippy/test/GUI build，Linux 额外执行 fmt 门禁
 - CLI 已有隔离沙箱集成测试；端到端依赖 TUI 真实 PTY/tmux 冒烟与 GUI 三平台真机验收
 

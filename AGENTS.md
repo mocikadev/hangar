@@ -5,7 +5,7 @@
 ## 项目概览
 
 **hangar** — OpenAI Codex 多账号管理 CLI/TUI/GUI 工具：免重复登录地在多个 ChatGPT 账号间切换，官方 `auth.json` 为唯一权威，本工具负责缓存、收敛与投影。
-当前状态：**v0.5.0 已发布**（可脚本化一次性 CLI、脱敏 JSON 与 TUI 配额交互已完成；GUI 冻结为维护模式；Linux/macOS 正式资产及 SHA-256 已回读验证，计划与证据见 `docs/design/v0.5.0-cli-tui-plan.md`）
+当前状态：**v0.5.0 已发布，v0.6.0 CLI/TUI 演进中**（令牌健康、刷新安全与账号总览按 `docs/design/v0.6.0-cli-tui-plan.md` 跟踪；GUI 冻结为维护模式）
 
 ## 技术栈
 
@@ -63,11 +63,12 @@ cargo test              # 单测（core + cli + gui）
 | README（面向用户：能力/使用/FAQ） | `README.md` |
 | 项目 Spec（目标/范围/验收） | `docs/requirements/project-spec.md` |
 | AI 执行协议 | `docs/ai/execution-protocol.md` |
-| 场景矩阵（S1-S12 风险与方案） | `docs/design/scenarios.md`（原根目录 SCENARIOS.md） |
+| 场景矩阵（S1-S13 风险与方案） | `docs/design/scenarios.md`（原根目录 SCENARIOS.md） |
 | 技术设计（架构/机制/外部接口） | `docs/design/architecture.md` |
 | 测试策略与验收清单 | `docs/quality/test-strategy.md` |
 | v0.4.0 收口计划 | `docs/design/v0.4.0-closure-plan.md` |
 | v0.5.0 CLI/TUI 计划 | `docs/design/v0.5.0-cli-tui-plan.md` |
+| v0.6.0 CLI/TUI 计划 | `docs/design/v0.6.0-cli-tui-plan.md` |
 | v0.5.0 发布说明 | `docs/releases/v0.5.0.md` |
 
 ## Skills 导航
