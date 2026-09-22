@@ -2,7 +2,7 @@
 
 ## 现状
 
-- 当前 workspace 为 73 项自动化测试（hangar-core 33 + CLI 单元 17 + CLI 二进制集成 10 + GUI 13），`cargo test` 单命令运行
+- 当前 workspace 为 76 项自动化测试（hangar-core 35 + CLI 单元 17 + CLI 二进制集成 11 + GUI 13），`cargo test` 单命令运行
 - GitHub Actions 在 Linux/macOS/Windows 跑 clippy/test/GUI build，Linux 额外执行 fmt 门禁
 - CLI 已有隔离沙箱集成测试；端到端依赖 TUI 真实 PTY/tmux 冒烟与 GUI 三平台真机验收
 
@@ -26,7 +26,7 @@
 1. **CJK 断言**：TestBackend buffer 中宽字符占两格、续格为空格（"详情"存为"详 情"），中文 `contains` 断言只用**单字**；ASCII 可整串
 2. **时区无关**：时间格式化断言只验格式（长度/分隔符），不硬编码日期；需要具体值的用固定偏移环境
 3. **隔离沙箱**：任何触盘测试用临时 `HOME`/`CODEX_HOME`；二进制集成测试额外设置仅 debug 构建生效的 `HANGAR_TEST_HOME`，避免 Windows Known Folder 忽略环境变量；禁止在用户真实目录验证写路径
-4. **无网络依赖**：单测不打真实接口；wham 解析用内置 JSON 样本（真实响应脱敏后可补充为 fixture）
+4. **无网络依赖**：单测不打真实接口；wham 解析用内置 JSON 样本，刷新传输失败通过仅 debug/test 构建生效的 `HANGAR_TEST_TOKEN_ENDPOINT` 指向本地不可用端口
 5. **一次性读取命令仍可能收敛**：`list`/`current` 会先执行 `harvest()`，不能作为真实 HOME 的纯只读验证；真实数据兼容冒烟必须把账号库与官方配置复制到权限受限的隔离沙箱后运行
 
 ## 验收清单（变更合入前）

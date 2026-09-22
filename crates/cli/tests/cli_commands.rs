@@ -40,15 +40,22 @@ impl Sandbox {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_hangar"))
+        self.run_with_env(args, None)
+    }
+
+    fn run_with_env(&self, args: &[&str], extra: Option<(&str, &str)>) -> Output {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_hangar"));
+        command
             .args(args)
             .env("HANGAR_TEST_HOME", &self.home)
             .env("HOME", &self.home)
             .env("USERPROFILE", &self.home)
             .env("CODEX_HOME", &self.codex_home)
-            .env("HANGAR_NO_UPDATE", "1")
-            .output()
-            .unwrap()
+            .env("HANGAR_NO_UPDATE", "1");
+        if let Some((key, value)) = extra {
+            command.env(key, value);
+        }
+        command.output().unwrap()
     }
 
     fn accounts_path(&self) -> PathBuf {
@@ -137,6 +144,38 @@ fn expired_jwt_without_refresh_token_never_overwrites_official_auth() {
     let saved: Value =
         serde_json::from_slice(&std::fs::read(sandbox.accounts_path()).unwrap()).unwrap();
     assert_eq!(saved["accounts"][0]["stale"], true);
+}
+
+#[test]
+fn transient_refresh_failure_preserves_official_auth_and_does_not_mark_stale() {
+    let mut expired = account("id-a", "alice@example.com", false);
+    expired["access_token"] = json!("x.eyJleHAiOjF9.y");
+    expired["expires_at"] = json!(1);
+    let sandbox = Sandbox::new(fixture(vec![expired], None));
+    let official = br#"{"sentinel":"keep-current-login"}"#;
+    std::fs::write(sandbox.codex_home.join("auth.json"), official).unwrap();
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let unavailable_endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+    drop(listener);
+    let output = sandbox.run_with_env(
+        &["switch", "id-a", "--json"],
+        Some(("HANGAR_TEST_TOKEN_ENDPOINT", &unavailable_endpoint)),
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(5),
+        "stderr={}",
+        text(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read(sandbox.codex_home.join("auth.json")).unwrap(),
+        official
+    );
+    let saved: Value =
+        serde_json::from_slice(&std::fs::read(sandbox.accounts_path()).unwrap()).unwrap();
+    assert_eq!(saved["accounts"][0]["stale"], false);
 }
 
 #[test]

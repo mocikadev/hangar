@@ -20,8 +20,9 @@ pub mod token_health;
 pub mod updater;
 
 pub use account::{
-    delete_account, force_refresh_account, fresh_account, harvest, load_accounts, reauth_account,
-    switch_account, with_accounts_lock, Account, AccountsFile,
+    delete_account, delete_account_checked, force_refresh_account, fresh_account, harvest,
+    load_accounts, reauth_account, reauth_account_checked, switch_account, switch_account_checked,
+    with_accounts_lock, Account, AccountError, AccountErrorKind, AccountsFile,
 };
 pub use login::do_login;
 pub use login::do_login_with;

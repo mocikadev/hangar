@@ -417,8 +417,13 @@ impl RefreshError {
 
 /// 用 refresh_token 静默换新 token（与 cockpit-tools refresh_access_token 一致）
 pub fn refresh_access_token(refresh_token: &str) -> Result<TokenResponse, RefreshError> {
+    #[cfg(debug_assertions)]
+    let token_endpoint =
+        std::env::var("HANGAR_TEST_TOKEN_ENDPOINT").unwrap_or_else(|_| TOKEN_ENDPOINT.to_string());
+    #[cfg(not(debug_assertions))]
+    let token_endpoint = TOKEN_ENDPOINT.to_string();
     let response = http_agent()
-        .post(TOKEN_ENDPOINT)
+        .post(&token_endpoint)
         .send_form(&[
             ("client_id", CLIENT_ID),
             ("grant_type", "refresh_token"),

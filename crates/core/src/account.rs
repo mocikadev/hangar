@@ -27,6 +27,41 @@ pub struct AccountsFile {
     pub current_account_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountErrorKind {
+    State,
+    Auth,
+    External,
+    Internal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountError {
+    kind: AccountErrorKind,
+    message: String,
+}
+
+impl AccountError {
+    fn new(kind: AccountErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    pub fn kind(&self) -> AccountErrorKind {
+        self.kind
+    }
+}
+
+impl std::fmt::Display for AccountError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for AccountError {}
+
 /// email 归一化：email 是账号唯一身份键（收编/去重/stale 复活都靠它匹配），
 /// 必须消除大小写/空白差异，否则同一账号会裂成两条
 pub fn normalize_email(email: &str) -> String {
@@ -305,37 +340,48 @@ pub fn with_accounts_lock<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T,
 /// 定向复活（reauth）：用新登录凭据原位覆盖目标 id 的账号（stale 复活专用）
 /// 邮箱不一致时拒绝，避免把 A 的登录态写到 B 身上（对齐 cockpit resolve_reauth_target）
 pub fn reauth_account(target_id: &str, fresh: &Account) -> Result<(), String> {
-    with_accounts_lock(|| {
-        let mut file = load_accounts()?;
-        let pos = file
-            .accounts
-            .iter()
-            .position(|a| a.id == target_id)
-            .ok_or_else(|| format!("账号未找到: {}", target_id))?;
-        let old_email = normalize_email(&file.accounts[pos].email);
-        if !old_email.is_empty() && old_email != fresh.email {
-            return Err(format!(
+    reauth_account_checked(target_id, fresh).map_err(|error| error.to_string())
+}
+
+pub fn reauth_account_checked(target_id: &str, fresh: &Account) -> Result<(), AccountError> {
+    let _guard = acquire_accounts_lock()
+        .map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
+    let mut file =
+        load_accounts().map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
+    let pos = file
+        .accounts
+        .iter()
+        .position(|a| a.id == target_id)
+        .ok_or_else(|| {
+            AccountError::new(AccountErrorKind::State, format!("账号未找到: {target_id}"))
+        })?;
+    let old_email = normalize_email(&file.accounts[pos].email);
+    if !old_email.is_empty() && old_email != fresh.email {
+        return Err(AccountError::new(
+            AccountErrorKind::State,
+            format!(
                 "重新登录邮箱不匹配：目标为 {}，本次为 {}，已拒绝覆盖",
                 file.accounts[pos].email, fresh.email
-            ));
-        }
-        let t = &mut file.accounts[pos];
-        t.email = fresh.email.clone();
-        t.access_token = fresh.access_token.clone();
-        t.refresh_token = fresh.refresh_token.clone();
-        t.id_token = fresh.id_token.clone();
-        t.expires_at = fresh.expires_at;
-        t.stale = false;
-        if fresh.account_id.is_some() {
-            t.account_id = fresh.account_id.clone();
-        }
-        if fresh.organization_id.is_some() {
-            t.organization_id = fresh.organization_id.clone();
-        }
-        file.current_account_id = Some(t.id.clone());
-        save_accounts_unlocked(&file)
-    })?;
-    switch_account(target_id)
+            ),
+        ));
+    }
+    let t = &mut file.accounts[pos];
+    t.email = fresh.email.clone();
+    t.access_token = fresh.access_token.clone();
+    t.refresh_token = fresh.refresh_token.clone();
+    t.id_token = fresh.id_token.clone();
+    t.expires_at = fresh.expires_at;
+    t.stale = false;
+    if fresh.account_id.is_some() {
+        t.account_id = fresh.account_id.clone();
+    }
+    if fresh.organization_id.is_some() {
+        t.organization_id = fresh.organization_id.clone();
+    }
+    file.current_account_id = Some(t.id.clone());
+    save_accounts_unlocked(&file)
+        .map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
+    switch_account_checked(target_id)
 }
 
 /// 删除账号（经典循环与 TUI 共用）。
@@ -343,23 +389,34 @@ pub fn reauth_account(target_id: &str, fresh: &Account) -> Result<(), String> {
 /// 无主登录态且无任何入口清理，属不安全残留（S7 保守策略升级为硬约束）。
 /// 返回恒为 Ok(false)（签名保持 Result 以便与调用方错误处理统一）
 pub fn delete_account(account_id: &str) -> Result<bool, String> {
-    with_accounts_lock(|| {
-        let mut file = load_accounts()?;
-        let idx = file
-            .accounts
-            .iter()
-            .position(|a| a.id == account_id)
-            .ok_or_else(|| format!("账号未找到: {}", account_id))?;
-        if Some(account_id) == file.current_account_id.as_deref() {
-            return Err(format!(
+    delete_account_checked(account_id).map_err(|error| error.to_string())
+}
+
+pub fn delete_account_checked(account_id: &str) -> Result<bool, AccountError> {
+    let _guard = acquire_accounts_lock()
+        .map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
+    let mut file =
+        load_accounts().map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
+    let idx = file
+        .accounts
+        .iter()
+        .position(|a| a.id == account_id)
+        .ok_or_else(|| {
+            AccountError::new(AccountErrorKind::State, format!("账号未找到: {account_id}"))
+        })?;
+    if Some(account_id) == file.current_account_id.as_deref() {
+        return Err(AccountError::new(
+            AccountErrorKind::State,
+            format!(
                 "账号 {} 正在使用中，无法删除；请先切换到其他账号（登录新号或切到已有账号）",
                 file.accounts[idx].email
-            ));
-        }
-        file.accounts.remove(idx);
-        save_accounts_unlocked(&file)?;
-        Ok(false)
-    })
+            ),
+        ));
+    }
+    file.accounts.remove(idx);
+    save_accounts_unlocked(&file)
+        .map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
+    Ok(false)
 }
 
 /// 账号库文件锁：~/.hangar/.accounts.lock（create_new 独占 + pid/time + 过期自愈）
@@ -805,7 +862,18 @@ fn persist_stale_marker(account: &Account) -> Result<(), String> {
 /// access_token 过期或 5 分钟内将过期时，用 refresh_token 静默换新并回存。
 /// 临时刷新失败时仅当原 AT 仍可安全使用才继续；否则拒绝投影官方登录态。
 /// force=true 跳过新鲜度检查（配额 401 后的重试链路用）。
-fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, String> {
+fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, AccountError> {
+    refresh_if_needed_with(account, force, crate::oauth::refresh_access_token)
+}
+
+fn refresh_if_needed_with<Refresh>(
+    account: &mut Account,
+    force: bool,
+    refresh: Refresh,
+) -> Result<Account, AccountError>
+where
+    Refresh: FnOnce(&str) -> Result<crate::oauth::TokenResponse, crate::oauth::RefreshError>,
+{
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -826,15 +894,20 @@ fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, Stri
             return Ok(account.clone());
         }
         account.stale = true;
-        persist_stale_marker(account).map_err(|error| format!("无法保存账号失效状态：{error}"))?;
-        return Err(format!(
+        persist_stale_marker(account).map_err(|error| {
+            AccountError::new(
+                AccountErrorKind::Internal,
+                format!("无法保存账号失效状态：{error}"),
+            )
+        })?;
+        return Err(AccountError::new(AccountErrorKind::Auth, format!(
             "账号 {} 的 access_token 已过期或不可用，且缺少 refresh_token；已拒绝切换并标记为需重新登录，未触碰官方登录态",
             account.email
-        ));
+        )));
     }
 
     crate::emit::emit("⟳ access_token 已过期/将过期，正在静默刷新...".to_string());
-    match crate::oauth::refresh_access_token(&account.refresh_token) {
+    match refresh(&account.refresh_token) {
         Ok(tok) => {
             account.access_token = tok.access_token;
             if let Some(rt) = tok.refresh_token.filter(|s| !s.is_empty()) {
@@ -868,12 +941,15 @@ fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, Stri
                 crate::token_health::RefreshFailureAction::MarkStale => {
                     account.stale = true;
                     persist_stale_marker(account).map_err(|error| {
-                        format!("刷新凭据已被拒绝，且无法保存失效状态：{error}")
+                        AccountError::new(
+                            AccountErrorKind::Internal,
+                            format!("刷新凭据已被拒绝，且无法保存失效状态：{error}"),
+                        )
                     })?;
-                    Err(format!(
+                    Err(AccountError::new(AccountErrorKind::Auth, format!(
                         "账号 {} 的凭据已过期（可能在 Codex 侧轮换时未收编），已拒绝继续以保护当前登录态；请对该账号重新登录复活一次",
                         account.email
-                    ))
+                    )))
                 }
                 crate::token_health::RefreshFailureAction::ContinueWithCurrentAccess => {
                     crate::emit::emit_err(format!(
@@ -882,10 +958,15 @@ fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, Stri
                     ));
                     Ok(account.clone())
                 }
-                crate::token_health::RefreshFailureAction::AbortWithoutStale => Err(format!(
-                    "账号 {} 的 access_token 已过期或即将过期，临时刷新失败（{}）；已拒绝切换，未触碰官方登录态",
-                    account.email, e
-                )),
+                crate::token_health::RefreshFailureAction::AbortWithoutStale => Err(
+                    AccountError::new(
+                        AccountErrorKind::External,
+                        format!(
+                            "账号 {} 的 access_token 已过期或即将过期，临时刷新失败（{}）；已拒绝切换，未触碰官方登录态",
+                            account.email, e
+                        ),
+                    ),
+                ),
             }
         }
     }
@@ -908,7 +989,8 @@ pub fn fresh_account(account_id: &str) -> Result<Account, String> {
             ));
         }
         let before = file.accounts[idx].clone();
-        let account = refresh_if_needed(&mut file.accounts[idx], false)?;
+        let account =
+            refresh_if_needed(&mut file.accounts[idx], false).map_err(|e| e.to_string())?;
         persist_refreshed_account(
             &file,
             account_id,
@@ -931,7 +1013,8 @@ pub fn force_refresh_account(account_id: &str) -> Result<Account, String> {
             .position(|a| a.id == account_id)
             .ok_or_else(|| format!("账号未找到: {}", account_id))?;
         let before = file.accounts[idx].clone();
-        let account = refresh_if_needed(&mut file.accounts[idx], true)?;
+        let account =
+            refresh_if_needed(&mut file.accounts[idx], true).map_err(|e| e.to_string())?;
         persist_refreshed_account(
             &file,
             account_id,
@@ -977,26 +1060,40 @@ where
 ///   （refresh_token 键必须存在，无值时为空串，官方解析器要求）
 /// - last_refresh: RFC3339 时间戳
 pub fn switch_account(account_id: &str) -> Result<(), String> {
-    // harvest 已在命令入口统一执行，这里不再重复
-    // 全程持锁：refresh 落盘 + 官方写 + current 更新原子化
-    with_accounts_lock(|| switch_locked(account_id))
+    switch_account_checked(account_id).map_err(|error| error.to_string())
 }
 
-fn switch_locked(account_id: &str) -> Result<(), String> {
-    let mut file = load_accounts()?;
+/// 带稳定错误类别的切换入口，供一次性 CLI 映射退出码；交互前端可继续使用字符串兼容入口。
+pub fn switch_account_checked(account_id: &str) -> Result<(), AccountError> {
+    // harvest 已在命令入口统一执行，这里不再重复
+    // 全程持锁：refresh 落盘 + 官方写 + current 更新原子化
+    let _guard = acquire_accounts_lock().map_err(|error| {
+        AccountError::new(
+            AccountErrorKind::Internal,
+            format!("获取账号库锁失败：{error}"),
+        )
+    })?;
+    switch_locked(account_id)
+}
+
+fn switch_locked(account_id: &str) -> Result<(), AccountError> {
+    let mut file =
+        load_accounts().map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
     let idx = file
         .accounts
         .iter()
         .position(|a| a.id == account_id)
-        .ok_or_else(|| format!("账号未找到: {}", account_id))?;
+        .ok_or_else(|| {
+            AccountError::new(AccountErrorKind::State, format!("账号未找到: {account_id}"))
+        })?;
 
     // stale 账号拒绝切换：其凭据已失效，覆盖官方 auth.json 会把 Codex
     // 当前正常工作的登录态污染成废凭据（用 r 命令定向复活）
     if file.accounts[idx].stale {
-        return Err(format!(
+        return Err(AccountError::new(AccountErrorKind::Auth, format!(
             "账号 {} 的凭据已失效（需重新登录），已拒绝切换以保护当前登录态；可用「复活」定向重新登录该账号",
             file.accounts[idx].email
-        ));
+        )));
     }
 
     // 切换前静默刷新：access_token 过期或 5 分钟内将过期时，用 refresh_token 换新
@@ -1009,10 +1106,10 @@ fn switch_locked(account_id: &str) -> Result<(), String> {
     if account.access_token.trim().is_empty() {
         file.accounts[idx].stale = true;
         let _ = save_accounts_unlocked(&file);
-        return Err(format!(
+        return Err(AccountError::new(AccountErrorKind::Auth, format!(
             "账号 {} 缺少 access_token 且无法刷新，已标为需重新登录（用「复活」处理），未触碰官方登录态",
             account.email
-        ));
+        )));
     }
     let health = crate::token_health::assess(
         &account.access_token,
@@ -1022,24 +1119,31 @@ fn switch_locked(account_id: &str) -> Result<(), String> {
         now_secs(),
     );
     if !health.can_project_without_refresh() {
-        return Err(format!(
-            "账号 {} 的 access_token 状态为 {}，已拒绝切换，未触碰官方登录态",
-            account.email,
-            health.label()
+        return Err(AccountError::new(
+            AccountErrorKind::Auth,
+            format!(
+                "账号 {} 的 access_token 状态为 {}，已拒绝切换，未触碰官方登录态",
+                account.email,
+                health.label()
+            ),
         ));
     }
     // 刷新可能更新了 token，先落盘一次，保证官方写失败/崩溃时库中仍是新 RT
-    save_accounts_unlocked(&file)?;
+    save_accounts_unlocked(&file)
+        .map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
 
-    project_official_auth(&account)?;
-    let codex_home = codex_home()?;
+    project_official_auth(&account)
+        .map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
+    let codex_home =
+        codex_home().map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
 
     // OAuth 切号后：重置 config.toml 中的自定义 provider 路由，保证走官方内置链路；
     // 最佳努力，失败只告警（keychain 同步已并入 project_official_auth，切换/刷新两路共用）
     reset_oauth_provider_in_config(&codex_home);
 
     file.current_account_id = Some(account_id.to_string());
-    save_accounts_unlocked(&file)?;
+    save_accounts_unlocked(&file)
+        .map_err(|error| AccountError::new(AccountErrorKind::Internal, error))?;
 
     Ok(())
 }
@@ -1334,6 +1438,32 @@ mod tests {
         .unwrap();
 
         assert_eq!(*calls.borrow(), ["save", "project"]);
+    }
+
+    #[test]
+    fn transient_refresh_failure_aborts_expired_account_without_marking_stale() {
+        let mut account = test_account("expired", "old");
+        account.expires_at = 1;
+        let error = refresh_if_needed_with(&mut account, false, |_| {
+            Err(crate::oauth::RefreshError::Transport("offline".to_string()))
+        })
+        .unwrap_err();
+
+        assert_eq!(error.kind(), AccountErrorKind::External);
+        assert!(!account.stale);
+    }
+
+    #[test]
+    fn forced_refresh_failure_can_reuse_still_fresh_access_token() {
+        let mut account = test_account("fresh", "old");
+        account.expires_at = now_secs() + 3_600;
+        let result = refresh_if_needed_with(&mut account, true, |_| {
+            Err(crate::oauth::RefreshError::Transport("offline".to_string()))
+        })
+        .unwrap();
+
+        assert_eq!(result.access_token, account.access_token);
+        assert!(!result.stale);
     }
 
     #[test]

@@ -52,6 +52,7 @@
 - core 的 `Account` 含明文凭据，禁止直接序列化到 stdout；JSON 必须映射为显式脱敏对象
 - 一次性命令不隐式自升级；默认无子命令时才沿用 TTY → TUI、非 TTY → classic 的交互分发
 - selector 只接受完整内部 ID或唯一邮箱；歧义时失败，不使用易漂移的列表编号
+- 切换链路通过 core 的稳定错误类别 `State/Auth/External/Internal` 映射 CLI 退出码；CLI 不解析中文错误文案
 
 ## 关键机制
 

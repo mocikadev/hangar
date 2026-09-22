@@ -1,7 +1,7 @@
 use crate::args::Command;
 use crate::{output, selector};
 use hangar_core as core;
-use hangar_core::account::{Account, AccountsFile};
+use hangar_core::account::{Account, AccountError, AccountErrorKind, AccountsFile};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +42,16 @@ impl CommandError {
     fn external(message: impl Into<String>) -> Self {
         Self::new(ErrorKind::External, message)
     }
+
+    fn from_account(error: AccountError) -> Self {
+        let kind = match error.kind() {
+            AccountErrorKind::State => ErrorKind::State,
+            AccountErrorKind::Auth => ErrorKind::Auth,
+            AccountErrorKind::External => ErrorKind::External,
+            AccountErrorKind::Internal => ErrorKind::Internal,
+        };
+        Self::new(kind, error.to_string())
+    }
 }
 
 fn load_after_harvest() -> Result<AccountsFile, CommandError> {
@@ -71,19 +81,6 @@ fn selected_after_harvest(value: &str) -> Result<(AccountsFile, Account), Comman
     Ok((after, target))
 }
 
-fn classify_account_error(message: String) -> CommandError {
-    let lower = message.to_ascii_lowercase();
-    if message.contains("失效")
-        || message.contains("重新登录")
-        || lower.contains("unauthorized")
-        || lower.contains("401")
-    {
-        CommandError::auth(message)
-    } else {
-        CommandError::state(message)
-    }
-}
-
 pub fn execute(command: Command, json: bool) -> Result<(), CommandError> {
     core::emit::set_quiet(true);
     match command {
@@ -99,7 +96,8 @@ pub fn execute(command: Command, json: bool) -> Result<(), CommandError> {
         Command::Switch { selector: value } => {
             let (file, account) = selected_after_harvest(&value)?;
             if file.current_account_id.as_deref() != Some(account.id.as_str()) {
-                core::account::switch_account(&account.id).map_err(classify_account_error)?;
+                core::account::switch_account_checked(&account.id)
+                    .map_err(CommandError::from_account)?;
             }
             output::success("switch", &format!("已切换到: {}", account.email), json);
         }
@@ -120,7 +118,8 @@ pub fn execute(command: Command, json: bool) -> Result<(), CommandError> {
             core::emit::set_quiet(false);
             let fresh = core::oauth::login_codex().map_err(CommandError::external)?;
             core::emit::set_quiet(true);
-            core::account::reauth_account(&target.id, &fresh).map_err(classify_account_error)?;
+            core::account::reauth_account_checked(&target.id, &fresh)
+                .map_err(CommandError::from_account)?;
             output::success("reauth", &format!("已复活并切换到: {}", target.email), json);
         }
         Command::Remove {
@@ -134,7 +133,8 @@ pub fn execute(command: Command, json: bool) -> Result<(), CommandError> {
                 ));
             }
             let (_, account) = selected_after_harvest(&value)?;
-            core::account::delete_account(&account.id).map_err(classify_account_error)?;
+            core::account::delete_account_checked(&account.id)
+                .map_err(CommandError::from_account)?;
             output::success("remove", &format!("已删除: {}", account.email), json);
         }
         Command::Quota {
@@ -250,14 +250,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn account_errors_have_stable_categories() {
-        assert_eq!(
-            classify_account_error("凭据已失效，需要重新登录".into()).kind,
-            ErrorKind::Auth
-        );
-        assert_eq!(
-            classify_account_error("当前账号不可删除".into()).kind,
-            ErrorKind::State
-        );
+    fn account_error_kinds_map_without_parsing_messages() {
+        let map = |kind| match kind {
+            AccountErrorKind::State => ErrorKind::State,
+            AccountErrorKind::Auth => ErrorKind::Auth,
+            AccountErrorKind::External => ErrorKind::External,
+            AccountErrorKind::Internal => ErrorKind::Internal,
+        };
+        assert_eq!(map(AccountErrorKind::Auth), ErrorKind::Auth);
+        assert_eq!(map(AccountErrorKind::External), ErrorKind::External);
     }
 }
