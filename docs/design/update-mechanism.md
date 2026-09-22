@@ -1,6 +1,6 @@
 # 版本发布与自升级机制设计（update-mechanism）
 
-> 状态：已实施并随 v0.3.0/v0.3.1 发版验证；v0.4.0 补齐 RPM 与跨平台门禁，本轮发布范围收窄为 Linux/macOS
+> 状态：已实施并经 v0.3.0-v0.4.0 发版验证；v0.5.0 延续 Linux/macOS 发布范围与 RPM/跨平台门禁
 > 对标：`mocika-skills-cli`（`skm`）的 CI 打包 + 自升级链路，按 hangar 约束裁剪
 > 远端：`git@github.com:mocikadev/hangar.git`
 
@@ -26,7 +26,7 @@ hangar 当前无版本发布流程、无升级能力，用户只能本地 `cargo
 
 新增两个 workflow（内容结构与 skm 一致，仅二进制名/产物名替换）：
 
-- `.github/workflows/ci.yml`：Linux/macOS/Windows 执行 clippy/test/GUI build，Windows 仅作代码兼容门禁、不产出 v0.4.0 Release 资产。
+- `.github/workflows/ci.yml`：Linux/macOS/Windows 执行 clippy/test/GUI build，Windows 仅作代码兼容门禁、不产出 v0.5.0 Release 资产。
 - `.github/workflows/release.yml`：仅 `v*` tag 触发 → verify 版本一致性 → 本轮四个 target 构建：
   - `x86_64-unknown-linux-musl`（cross）→ `hangar-linux-amd64`
   - `aarch64-unknown-linux-musl`（cross）→ `hangar-linux-arm64`
@@ -34,7 +34,7 @@ hangar 当前无版本发布流程、无升级能力，用户只能本地 `cargo
   - `aarch64-apple-darwin` → `hangar-macos-arm64`
   → `SHA256SUMS.txt` → `softprops/action-gh-release` 发 Release。
 
-`install.sh` 继续服务 Linux/macOS。`install.ps1` 与 Windows target 映射保留供后续恢复发布，但 v0.4.0 的 latest Release 不包含 Windows 资产，README 不再引导用 latest 安装 Windows 版本。
+`install.sh` 继续服务 Linux/macOS。`install.ps1` 与 Windows target 映射保留供后续恢复发布，但 v0.5.0 的 latest Release 不包含 Windows 资产，README 不再引导用 latest 安装 Windows 版本。
 
 ## 4. `core::updater` 模块设计（零新依赖）
 

@@ -1,6 +1,6 @@
 # GUI 版本设计（egui 第三前端）
 
-> 状态：已实施；v0.4.0 收口 Linux/macOS，Windows 安装包与真机验收延期
+> 状态：已实施并进入维护模式；v0.5.0 继续发布 Linux/macOS 包，Windows 安装包与真机验收延期
 > 决策：界面层 egui（`eframe`）；打包 `tauri-bundler` 独立使用；后端复用 `hangar-core`
 
 ## 1. 目标与非目标
@@ -93,9 +93,9 @@ cargo workspace 内不允许两个 bin 同名（CLI 已占 `hangar`，产物会�
 
 ### 产物与流水线
 
-- `tauri-bundler` 独立使用（不引 Tauri runtime）：macOS `.dmg`、Linux `.deb` / `.rpm` / `.AppImage`，Linux 附 `.desktop` 启动器；Windows `nsis .exe` 配置保留但不进入 v0.4.0 Release。
+- `tauri-bundler` 独立使用（不引 Tauri runtime）：macOS `.dmg`、Linux `.deb` / `.rpm` / `.AppImage`，Linux 附 `.desktop` 启动器；Windows `nsis .exe` 配置保留但不进入 v0.5.0 Release。
 - 版本号与 cli 同源（发版一起 bump，tag 校验覆盖 gui 包名）。
-- v0.4.0 Release 资产覆盖 `linux-amd64`、`linux-arm64`、`macos-amd64`、`macos-arm64`；Windows 资产延期；
+- v0.5.0 Release 资产覆盖 `linux-amd64`、`linux-arm64`、`macos-amd64`、`macos-arm64`；Windows 资产延期；
   `install.sh` 不动（CLI 用户）；GUI 用户从 Release 页下载安装包。
 - CI 在 Linux、macOS、Windows 执行 GUI 构建，release 矩阵负责各平台正式产物。
 
@@ -117,7 +117,7 @@ cargo workspace 内不允许两个 bin 同名（CLI 已占 `hangar`，产物会�
 
 ## 11. 验收标准
 
-- Linux/macOS 安装包可安装、启动无终端、无需任何命令；Windows 安装包与真机验收延期，不阻塞 v0.4.0；
+- Linux/macOS 安装包可安装、启动无终端、无需任何命令；Windows 安装包与真机验收延期，不阻塞 v0.5.0；
 - 与 TUI 逐项对等操作一遍，结果一致（切换生效、配额数字一致）；
 - 无网络启动 ≤ 超时后必进主窗口；SHA 篡改演练拒绝替换；
 - `fmt/clippy/test` 全绿。

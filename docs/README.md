@@ -24,7 +24,7 @@
 |------|------|
 | [architecture.md](design/architecture.md) | 分层架构、模块边界、harvest/切换/原子写/锁/OAuth 等关键机制 |
 | [scenarios.md](design/scenarios.md) | S1-S12 令牌一致性场景、风险与方案、安全声明 |
-| [v0.4.0-closure-plan.md](design/v0.4.0-closure-plan.md) | v0.4.0 收口任务、平台验收与发布跟踪（执行中） |
+| [v0.4.0-closure-plan.md](design/v0.4.0-closure-plan.md) | v0.4.0 收口任务、平台验收与发布记录（历史归档） |
 | [v0.5.0-cli-tui-plan.md](design/v0.5.0-cli-tui-plan.md) | v0.5.0 一次性 CLI、TUI 演进任务与验收跟踪 |
 | [update-mechanism.md](design/update-mechanism.md) | 版本发布与自升级机制设计（CI/升级流程/双前端接入） |
 | [update-plan.md](design/update-plan.md) | 自升级实施计划（已执行完毕，留档备查） |
@@ -34,6 +34,12 @@
 | 文档 | 内容 |
 |------|------|
 | [test-strategy.md](quality/test-strategy.md) | 测试策略、单测布局、验收清单 |
+
+### 发布（releases）
+
+| 文档 | 内容 |
+|------|------|
+| [v0.5.0.md](releases/v0.5.0.md) | v0.5.0 发布说明、资产范围与已知限制 |
 
 ### AI 协作（ai）
 
