@@ -64,8 +64,8 @@ pub fn doctor_lines(binary_version: &str) -> Result<(Vec<String>, usize), String
             }
             Err(_) => warn(&mut out, "accounts.json 不存在（尚未创建）".to_string()),
         }
-        if let Ok(home) = dirs::home_dir().ok_or("") {
-            match mode(&home.join(".hangar")) {
+        if let Some(hangar_dir) = acc_path.parent() {
+            match mode(hangar_dir) {
                 Ok(0o700) => ok(&mut out, "账号库目录权限 700".to_string()),
                 Ok(m) => warn(&mut out, format!("账号库目录权限 {:o}（建议 700）", m)),
                 Err(_) => {}

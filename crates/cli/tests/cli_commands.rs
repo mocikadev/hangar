@@ -42,6 +42,7 @@ impl Sandbox {
     fn run(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_hangar"))
             .args(args)
+            .env("HANGAR_TEST_HOME", &self.home)
             .env("HOME", &self.home)
             .env("USERPROFILE", &self.home)
             .env("CODEX_HOME", &self.codex_home)

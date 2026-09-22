@@ -33,8 +33,28 @@ pub fn normalize_email(email: &str) -> String {
     email.trim().to_lowercase()
 }
 
+fn home_dir() -> Result<PathBuf, String> {
+    // Windows 的 dirs::home_dir() 走 Known Folder，不受 HOME/USERPROFILE 影响。
+    // 集成测试必须能把写路径强制放进临时目录；release 构建完全移除此入口，
+    // 避免形成第二套用户配置路径契约。
+    #[cfg(debug_assertions)]
+    if let Some(raw) = std::env::var_os("HANGAR_TEST_HOME") {
+        if !raw.is_empty() {
+            let path = PathBuf::from(raw);
+            if path.exists() && !path.is_dir() {
+                return Err(format!(
+                    "HANGAR_TEST_HOME 指向非目录（{}），已拒绝写入",
+                    path.display()
+                ));
+            }
+            return Ok(path);
+        }
+    }
+    dirs::home_dir().ok_or_else(|| "无法获取 home 目录".to_string())
+}
+
 fn switcher_dir() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "无法获取 home 目录".to_string())?;
+    let home = home_dir()?;
     let dir = home.join(".hangar");
     // 明文 token 目录：创建即 700，避免先 755 再 chmod 的窗口期可被同机他用户列目录
     #[cfg(unix)]
@@ -94,7 +114,7 @@ fn codex_home() -> Result<PathBuf, String> {
             return Ok(p);
         }
     }
-    let home = dirs::home_dir().ok_or_else(|| "无法获取 home 目录".to_string())?;
+    let home = home_dir()?;
     Ok(home.join(".codex"))
 }
 
