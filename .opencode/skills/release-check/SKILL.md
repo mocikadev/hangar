@@ -1,6 +1,6 @@
 ---
 name: release-check
-description: Audit and prepare hangar release candidates, including version consistency, Rust quality gates, platform bundles, checksums, and recorded smoke-test evidence. Use for release preparation or release-pipeline diagnosis; do not publish, tag, or push without explicit user authorization.
+description: Audit and prepare hangar CLI or GUI release candidates, including channel-specific version consistency, Rust quality gates, artifacts, checksums, and recorded smoke-test evidence. Use for release preparation or release-pipeline diagnosis; do not publish, tag, or push without explicit user authorization.
 ---
 
 # Hangar Release Check
@@ -10,11 +10,13 @@ Prepare a release candidate without treating a successful build as proof of plat
 ## Required checks
 
 1. Read `AGENTS.md` and `docs/design/v0.4.0-closure-plan.md`; preserve S11 ordering and the real-HOME testing restriction.
-2. Confirm the intended version agrees across the CLI crate, GUI crate, Tauri config, tag, and user-facing documentation.
+2. Identify the release channel before changing versions:
+   - CLI tag `vX.Y.Z`: CLI crate, tag, release notes, and CLI-facing documentation must agree. Do not bump GUI/Tauri merely to match a CLI release.
+   - GUI tag `gui-vX.Y.Z`: GUI crate, Tauri config, tag, release notes, and GUI-facing documentation must agree. Do not bump CLI merely to match a GUI release.
 3. Run write-path verification with isolated `HOME` and `CODEX_HOME`. Preserve the real `RUSTUP_HOME` and `CARGO_HOME` when required for the installed toolchain/cache.
 4. Run the project gate in order: `cargo fmt`, `cargo clippy -- -D warnings`, then `cargo test`.
-5. Build release CLI and GUI artifacts. For macOS, verify the app bundle signature with `codesign --verify --deep --strict`; distinguish ad-hoc signing from Developer ID signing and notarization.
-6. Check that every staged installer and standalone binary is included in `SHA256SUMS.txt` and the GitHub Release upload patterns, including RPM.
+5. Build artifacts for the selected channel. CLI candidates require the local release CLI; GUI candidates require the platform bundle and, on macOS, `codesign --verify --deep --strict` with ad-hoc/Developer ID/notarization state recorded separately.
+6. Check that every asset produced by the selected workflow is included in its `SHA256SUMS.txt` and upload patterns. RPM applies only to a GUI workflow that produces one.
 7. Record platform smoke evidence separately for Linux, macOS, and Windows. Never infer a true result for an unavailable platform from compilation alone.
 
 ## Safety and stopping conditions
@@ -26,4 +28,4 @@ Prepare a release candidate without treating a successful build as proof of plat
 
 ## Handoff
 
-Report the candidate version/commit, commands and results, artifact paths and hashes, signing/notarization state, verified platforms, unverified platforms, and rollback location for any local replacement.
+Report the channel, candidate version/commit, commands and results, artifact paths and hashes, verified platforms, unverified platforms, and rollback location for any local replacement. Signing/notarization state is required only for GUI bundles.

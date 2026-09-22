@@ -5,7 +5,7 @@
 ## 项目概览
 
 **hangar** — OpenAI Codex 多账号管理 CLI/TUI/GUI 工具：免重复登录地在多个 ChatGPT 账号间切换，官方 `auth.json` 为唯一权威，本工具负责缓存、收敛与投影。
-当前状态：**v0.5.0 已发布，v0.6.0 CLI/TUI 演进中**（令牌健康、刷新安全与账号总览按 `docs/design/v0.6.0-cli-tui-plan.md` 跟踪；GUI 冻结为维护模式）
+当前状态：**v0.6.0 已发布，v0.7.0 CLI/TUI 候选已验收**（全账号周剩余总览与稳定推荐按 `docs/design/v0.7.0-weekly-recommendation-plan.md` 跟踪；GUI 保持 0.6.0 维护通道）
 
 ## 技术栈
 
@@ -69,7 +69,9 @@ cargo test              # 单测（core + cli + gui）
 | v0.4.0 收口计划 | `docs/design/v0.4.0-closure-plan.md` |
 | v0.5.0 CLI/TUI 计划 | `docs/design/v0.5.0-cli-tui-plan.md` |
 | v0.6.0 CLI/TUI 计划 | `docs/design/v0.6.0-cli-tui-plan.md` |
+| v0.7.0 周额度推荐计划 | `docs/design/v0.7.0-weekly-recommendation-plan.md` |
 | v0.5.0 发布说明 | `docs/releases/v0.5.0.md` |
+| v0.7.0 发布说明 | `docs/releases/v0.7.0.md` |
 
 ## Skills 导航
 
