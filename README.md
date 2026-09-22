@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | 
 
 安装脚本自动识别平台、校验 SHA256、把 `hangar` 放到 `~/.local/bin`。
 
-> Windows 的 v0.5.0 二进制与 GUI 安装包本轮不发布；请勿用 `latest` 安装脚本获取该版本。
+> Windows 的 v0.6.0 二进制与 GUI 安装包本轮不发布；请勿用 `latest` 安装脚本获取该版本。
 
 ### 手动安装
 
@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | 
 
 ### 桌面版（GUI）
 
-在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（v0.5.0 提供 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`；Windows GUI 资产延期）。GUI 继续维护现有账号、配额与托盘能力；后续新增的自动化能力优先进入 CLI/TUI。
+在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（v0.6.0 提供 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`；Windows GUI 资产延期）。GUI 继续维护现有账号、配额与托盘能力；后续新增的自动化能力优先进入 CLI/TUI。
 
 ### 更新
 
@@ -110,8 +110,8 @@ hangar update
 | 平台 | 状态 | 说明 |
 |------|------|------|
 | Linux x86_64 / ARM64 | ✅ | 全功能 |
-| macOS Intel / Apple 芯片 | ✅ | 含钥匙串快照同步；v0.5.0 沿用已验证的托盘/Dock 行为 |
-| Windows x86_64 | ⏸ | CLI/GUI 代码保留并由 CI 检查；v0.5.0 不发布 Windows 资产 |
+| macOS Intel / Apple 芯片 | ✅ | 含钥匙串快照同步；v0.6.0 沿用已验证的托盘/Dock 行为 |
+| Windows x86_64 | ⏸ | CLI/GUI 代码保留并由 CI 检查；v0.6.0 不发布 Windows 资产 |
 
 ## 安全提示
 
