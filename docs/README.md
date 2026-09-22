@@ -27,6 +27,7 @@
 | [v0.4.0-closure-plan.md](design/v0.4.0-closure-plan.md) | v0.4.0 收口任务、平台验收与发布记录（历史归档） |
 | [v0.5.0-cli-tui-plan.md](design/v0.5.0-cli-tui-plan.md) | v0.5.0 一次性 CLI、TUI 演进任务与验收跟踪 |
 | [v0.6.0-cli-tui-plan.md](design/v0.6.0-cli-tui-plan.md) | v0.6.0 令牌健康、刷新安全与 TUI 总览任务跟踪 |
+| [v0.7.0-weekly-recommendation-plan.md](design/v0.7.0-weekly-recommendation-plan.md) | v0.7.0 全账号周剩余总览与稳定推荐任务跟踪 |
 | [ci-release-decoupling-plan.md](design/ci-release-decoupling-plan.md) | CLI/GUI CI 与发布解耦任务、触发矩阵与验收记录 |
 | [update-mechanism.md](design/update-mechanism.md) | 版本发布与自升级机制设计（CI/升级流程/双前端接入） |
 | [update-plan.md](design/update-plan.md) | 自升级实施计划（已执行完毕，留档备查） |

@@ -15,9 +15,7 @@ enum Column {
     Account,
     Status,
     Plan,
-    Session,
     Week,
-    Quota,
     Access,
     Refresh,
 }
@@ -28,7 +26,6 @@ fn columns(width: u16) -> Vec<Column> {
             Column::Account,
             Column::Status,
             Column::Plan,
-            Column::Session,
             Column::Week,
             Column::Access,
             Column::Refresh,
@@ -37,17 +34,11 @@ fn columns(width: u16) -> Vec<Column> {
         vec![
             Column::Account,
             Column::Status,
-            Column::Session,
             Column::Week,
             Column::Access,
         ]
     } else {
-        vec![
-            Column::Account,
-            Column::Status,
-            Column::Quota,
-            Column::Access,
-        ]
+        vec![Column::Account, Column::Status, Column::Week]
     }
 }
 
@@ -56,9 +47,7 @@ fn heading(column: Column) -> &'static str {
         Column::Account => "账号",
         Column::Status => "状态",
         Column::Plan => "计划",
-        Column::Session => "5h",
-        Column::Week => "周",
-        Column::Quota => "配额",
+        Column::Week => "周剩余",
         Column::Access => "AT",
         Column::Refresh => "RT",
     }
@@ -67,23 +56,16 @@ fn heading(column: Column) -> &'static str {
 fn constraint(column: Column) -> Constraint {
     match column {
         Column::Account => Constraint::Min(18),
-        Column::Status => Constraint::Length(10),
+        Column::Status => Constraint::Length(13),
         Column::Plan => Constraint::Length(12),
-        Column::Session | Column::Week => Constraint::Length(8),
-        Column::Quota => Constraint::Length(15),
+        Column::Week => Constraint::Length(10),
         Column::Access | Column::Refresh => Constraint::Length(9),
     }
 }
 
-fn percent(quota: Option<&Quota>, prefix: &str) -> String {
+fn weekly_percent(quota: Option<&Quota>) -> String {
     quota
-        .and_then(|quota| {
-            quota
-                .windows
-                .iter()
-                .find(|window| window.label.starts_with(prefix))
-        })
-        .and_then(|window| window.window.remaining)
+        .and_then(crate::recommendation::weekly_remaining)
         .map(|value| format!("{value}%"))
         .unwrap_or_else(|| "未知".to_string())
 }
@@ -105,13 +87,7 @@ fn quota_value(
         return "待查询".to_string();
     };
     match column {
-        Column::Session => percent(Some(quota), "会话"),
-        Column::Week => percent(Some(quota), "周"),
-        Column::Quota => format!(
-            "5h {} / 周 {}",
-            percent(Some(quota), "会话"),
-            percent(Some(quota), "周")
-        ),
+        Column::Week => weekly_percent(Some(quota)),
         _ => String::new(),
     }
 }
@@ -120,6 +96,7 @@ pub(super) struct Overview<'a> {
     pub accounts: &'a [Account],
     pub visible: &'a [usize],
     pub current: Option<&'a str>,
+    pub recommended: Option<&'a str>,
     pub quotas: &'a HashMap<String, Quota>,
     pub pending: &'a HashSet<String>,
     pub errors: &'a HashMap<String, String>,
@@ -146,16 +123,23 @@ pub(super) fn render(frame: &mut ratatui::Frame, area: Rect, data: Overview<'_>,
             let value = match column {
                 Column::Account => account.email.clone(),
                 Column::Status if account.stale => "⚠ 需登录".to_string(),
+                Column::Status
+                    if data.current == Some(account.id.as_str())
+                        && data.recommended == Some(account.id.as_str()) =>
+                {
+                    "● 使用中 ★".to_string()
+                }
                 Column::Status if data.current == Some(account.id.as_str()) => {
                     "● 使用中".to_string()
+                }
+                Column::Status if data.recommended == Some(account.id.as_str()) => {
+                    "★ 建议".to_string()
                 }
                 Column::Status => "未激活".to_string(),
                 Column::Plan => quota
                     .and_then(|quota| quota.plan.clone())
                     .unwrap_or_else(|| "待查询".to_string()),
-                Column::Session | Column::Week | Column::Quota => {
-                    quota_value(&account.id, quota, data.pending, data.errors, *column)
-                }
+                Column::Week => quota_value(&account.id, quota, data.pending, data.errors, *column),
                 Column::Access => health.label().to_string(),
                 Column::Refresh => if health.has_refresh_token {
                     "可续期"
@@ -167,6 +151,7 @@ pub(super) fn render(frame: &mut ratatui::Frame, area: Rect, data: Overview<'_>,
             let color = match column {
                 Column::Status if account.stale => Color::Yellow,
                 Column::Status if data.current == Some(account.id.as_str()) => Color::Green,
+                Column::Status if data.recommended == Some(account.id.as_str()) => Color::Cyan,
                 Column::Access if !health.can_project_without_refresh() => Color::Yellow,
                 _ => Color::Reset,
             };
@@ -218,9 +203,9 @@ mod tests {
 
     #[test]
     fn columns_degrade_for_narrow_terminals() {
-        assert_eq!(columns(120).len(), 7);
-        assert_eq!(columns(80).len(), 7);
-        assert_eq!(columns(70).len(), 5);
-        assert_eq!(columns(50).len(), 4);
+        assert_eq!(columns(120).len(), 6);
+        assert_eq!(columns(80).len(), 6);
+        assert_eq!(columns(70).len(), 4);
+        assert_eq!(columns(50).len(), 3);
     }
 }

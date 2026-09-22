@@ -2,6 +2,7 @@
 
 use crate::ui;
 use hangar_core as core;
+use std::collections::HashMap;
 use std::io::{self, Write};
 
 pub fn show_menu_and_handle() -> Result<(), String> {
@@ -107,6 +108,7 @@ fn quota_interactive() -> Result<(), String> {
         return Ok(());
     }
     ui::section("配额");
+    let mut quotas = HashMap::new();
     for acc in &file.accounts {
         if acc.stale {
             println!(
@@ -127,26 +129,23 @@ fn quota_interactive() -> Result<(), String> {
                     .unwrap_or_default()
                     .as_secs() as i64;
                 let plan = q.plan.as_deref().unwrap_or("-");
-                if q.windows.is_empty() {
-                    println!("\r  {} [{}] 无可用窗口", acc.email, plan);
+                println!("\r  {} [{}]", acc.email, plan);
+                if let Some(w) = q.windows.iter().find(|w| w.label.starts_with('周')) {
+                    println!(
+                        "    周剩余 {} {:>4} · 重置于 {}",
+                        core::quota::quota_bar(w.window.remaining),
+                        w.window
+                            .remaining
+                            .map(|p| format!("{}%", p))
+                            .unwrap_or_else(|| "未知".to_string()),
+                        core::quota::reset_at_ts(&w.window, now)
+                            .map(core::quota::fmt_ts_local)
+                            .unwrap_or_else(|| "未知".to_string()),
+                    );
                 } else {
-                    // 首行：邮箱 + plan；每个窗口一行（label 由时长判定，非固定 5h/周）
-                    println!("\r  {} [{}]", acc.email, plan);
-                    for w in &q.windows {
-                        let pct = w.window.remaining.unwrap_or(0).clamp(0, 100);
-                        println!(
-                            "    {} {} {:>4} ~{}",
-                            w.label,
-                            core::quota::quota_bar(w.window.remaining),
-                            w.window
-                                .remaining
-                                .map(|p| format!("{}%", p))
-                                .unwrap_or_else(|| "未知".to_string()),
-                            core::quota::fmt_countdown(core::quota::reset_in_secs(&w.window, now)),
-                        );
-                        let _ = pct;
-                    }
+                    println!("    周剩余 未知");
                 }
+                quotas.insert(acc.id.clone(), q);
             }
             Err(e) => println!("\r  {} {}", acc.email, ui::warn(&e)),
         }
@@ -155,6 +154,31 @@ fn quota_interactive() -> Result<(), String> {
         "  {}",
         ui::dim("剩余%=100-used；接口为非公开契约，失败属正常波动")
     );
+    match crate::recommendation::recommend(
+        &file.accounts,
+        file.current_account_id.as_deref(),
+        &quotas,
+    ) {
+        Some(recommendation)
+            if recommendation.reason == crate::recommendation::Reason::KeepCurrent =>
+        {
+            println!(
+                "  {}",
+                ui::success(&format!(
+                    "建议继续使用 {}（周剩余 {}%）",
+                    recommendation.email, recommendation.weekly_remaining
+                ))
+            );
+        }
+        Some(recommendation) => println!(
+            "  {}",
+            ui::info(&format!(
+                "建议使用 {}（周剩余 {}%）",
+                recommendation.email, recommendation.weekly_remaining
+            ))
+        ),
+        None => println!("  {}", ui::dim("暂无可用建议")),
+    }
     Ok(())
 }
 

@@ -2,6 +2,7 @@ mod args;
 mod classic;
 mod commands;
 mod output;
+mod recommendation;
 mod selector;
 mod tui;
 mod tui_overview;

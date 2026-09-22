@@ -2,7 +2,7 @@
 
 ## 现状
 
-- 当前 workspace 为 76 项自动化测试（hangar-core 35 + CLI 单元 17 + CLI 二进制集成 11 + GUI 13），`cargo test` 单命令运行
+- 当前 workspace 为 83 项自动化测试（hangar-core 35 + CLI 单元 24 + CLI 二进制集成 11 + GUI 13），`cargo test` 单命令运行
 - GitHub Actions 在 Linux/macOS/Windows 分别运行 CLI/Core 与 GUI 的定向 clippy/test；core 或锁文件变化触发两条流水线，Linux 额外执行 fmt 门禁
 - CLI 已有隔离沙箱集成测试；端到端依赖 TUI 真实 PTY/tmux 冒烟与 GUI 三平台真机验收
 
@@ -10,7 +10,7 @@
 
 | 层 | 方式 | 位置 |
 |----|------|------|
-| 纯函数（JWT/email/时间/配额解析/路径） | 表驱动单测，基准值注明生成方式 | core/cli 各模块 `mod tests` |
+| 纯函数（JWT/email/时间/配额解析/推荐/路径） | 表驱动单测，基准值注明生成方式 | core/cli 各模块 `mod tests` |
 | 文件 I/O（原子写/备份/权限/锁） | 临时目录真实读写断言（如 `atomic_write_keeps_backup_private`） | core account.rs |
 | TUI 渲染 | `ratatui::backend::TestBackend` 快照断言 | cli tui.rs |
 | 前端分发/守卫逻辑 | 构造 `App` 假数据直接断言（如 `palette_visible` 过滤） | cli tui.rs |

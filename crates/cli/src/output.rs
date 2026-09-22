@@ -136,10 +136,11 @@ pub fn quotas(rows: &[(Account, Result<Quota, String>)], json_output: bool, now:
                     account.email,
                     quota.plan.as_deref().unwrap_or("-")
                 );
-                if quota.windows.is_empty() {
-                    println!("  无可用窗口");
-                }
-                for window in &quota.windows {
+                if let Some(window) = quota
+                    .windows
+                    .iter()
+                    .find(|window| window.label.starts_with('周'))
+                {
                     let remaining = window
                         .window
                         .remaining
@@ -148,7 +149,9 @@ pub fn quotas(rows: &[(Account, Result<Quota, String>)], json_output: bool, now:
                     let reset = reset_at_ts(&window.window, now)
                         .map(hangar_core::quota::fmt_ts_local)
                         .unwrap_or_else(|| "未知".to_string());
-                    println!("  {} 剩余 {} 重置于 {}", window.label, remaining, reset);
+                    println!("  周剩余 {} 重置于 {}", remaining, reset);
+                } else {
+                    println!("  周剩余 未知");
                 }
             }
             Err(error) => println!("{}\t失败：{}", account.email, error),

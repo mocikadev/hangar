@@ -40,7 +40,7 @@ enum Ev {
     QuotaOne {
         id: String,
         email: String,
-        res: Result<Quota, String>,
+        res: Box<Result<(Account, Quota), String>>,
     },
     QuotaDone,
     UpdateDone {
@@ -112,6 +112,33 @@ impl App {
         self.log.push(s);
         if self.log.len() > LOG_CAP {
             self.log.drain(..self.log.len() - LOG_CAP);
+        }
+    }
+
+    fn apply_quota_result(
+        &mut self,
+        id: String,
+        email: String,
+        result: Result<(Account, Quota), String>,
+    ) {
+        self.quota_pending.remove(&id);
+        match result {
+            Ok((account, quota)) => {
+                self.quota_errors.remove(&id);
+                if let Some(stored) = self
+                    .accounts
+                    .iter_mut()
+                    .find(|stored| stored.id == account.id)
+                {
+                    *stored = account;
+                }
+                self.quotas.insert(id, quota);
+            }
+            Err(error) => {
+                self.quotas.remove(&id);
+                self.quota_errors.insert(id, error.clone());
+                self.push_log(format!("✗ {}：{}", email, error));
+            }
         }
     }
 
@@ -192,6 +219,11 @@ fn render(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>) {
 
 fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
     let area = f.area();
+    let recommendation = (!app.quota_busy)
+        .then(|| {
+            crate::recommendation::recommend(&app.accounts, app.current.as_deref(), &app.quotas)
+        })
+        .flatten();
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -248,6 +280,9 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
             accounts: &app.accounts,
             visible: &rows,
             current: app.current.as_deref(),
+            recommended: recommendation
+                .as_ref()
+                .map(|recommendation| recommendation.account_id.as_str()),
             quotas: &app.quotas,
             pending: &app.quota_pending,
             errors: &app.quota_errors,
@@ -357,26 +392,20 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
             Some(q) => {
                 let inner = quota_block.inner(right[1]);
                 f.render_widget(quota_block, right[1]);
-                // 按服务端实际下发的窗口动态行（label 由 limit_window_seconds 判定），
-                // 固定 2 行：窗口×N（超2个合并） + 重置卡行（计划只在详情面板显示，不重复）
-                let n_win = q.windows.len().min(2);
+                // 当前产品只展示实际生效的周窗口；core 仍容错保留其他窗口，
+                // 待服务端重新启用后再单独评估是否恢复到前端。
                 let rows = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Length(n_win.max(1) as u16),
-                        Constraint::Length(1),
-                    ])
+                    .constraints([Constraint::Length(1), Constraint::Length(1)])
                     .split(inner);
-                // rows[0] 是窗口区（N 行高），逐行手写 Rect 避免嵌套 Layout
-                for (i, w) in q.windows.iter().take(2).enumerate() {
+                if let Some(w) = q.windows.iter().find(|w| w.label.starts_with('周')) {
                     let pct = w.window.remaining.unwrap_or(0).clamp(0, 100);
-                    // 重置时间显示具体本地日期时间（用户要求），不再是倒计时
                     let reset = core::quota::reset_at_ts(&w.window, app.quota_now)
                         .map(core::quota::fmt_ts_local)
                         .unwrap_or_else(|| "未知".to_string());
                     let text = match w.window.remaining {
-                        Some(p) => format!("{} {}% 重置于 {}", w.label, p, reset),
-                        None => format!("{} 未知", w.label),
+                        Some(p) => format!("周剩余 {}% · 重置于 {}", p, reset),
+                        None => "周剩余 未知".to_string(),
                     };
                     let g = ratatui::widgets::LineGauge::default()
                         .ratio(if w.window.remaining.is_some() {
@@ -389,14 +418,14 @@ fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
                             Style::default().fg(level_color(w.window.remaining)),
                         ))
                         .filled_style(Style::default().fg(level_color(w.window.remaining)));
+                    f.render_widget(g, rows[0]);
+                } else {
                     f.render_widget(
-                        g,
-                        Rect {
-                            x: rows[0].x,
-                            y: rows[0].y + i as u16,
-                            width: rows[0].width,
-                            height: 1,
-                        },
+                        Paragraph::new(Line::styled(
+                            "周剩余 未知",
+                            Style::default().fg(Color::DarkGray),
+                        )),
+                        rows[0],
                     );
                 }
                 // 重置卡行：summary 数量 + 明细最早到期（只读）
@@ -532,8 +561,15 @@ fn spawn_quota(tx: Sender<Ev>, ids: Vec<(String, String)>) {
     std::thread::spawn(move || {
         crate::ui::set_quiet(true);
         for (id, email) in ids {
-            let res = core::quota::fetch_quota_for_account(&id).map(|(_, q)| q);
-            if tx.send(Ev::QuotaOne { id, email, res }).is_err() {
+            let res = core::quota::fetch_quota_for_account(&id);
+            if tx
+                .send(Ev::QuotaOne {
+                    id,
+                    email,
+                    res: Box::new(res),
+                })
+                .is_err()
+            {
                 return;
             }
         }
@@ -558,12 +594,12 @@ fn spawn_update(tx: Sender<Ev>) {
     });
 }
 
-fn startup_quota_target(app: &App) -> Option<(String, String)> {
-    app.current
-        .as_deref()
-        .and_then(|id| app.accounts.iter().find(|a| a.id == id && !a.stale))
-        .or_else(|| app.accounts.iter().find(|a| !a.stale))
+fn quota_targets(app: &App) -> Vec<(String, String)> {
+    app.accounts
+        .iter()
+        .filter(|account| !account.stale)
         .map(|a| (a.id.clone(), a.email.clone()))
+        .collect()
 }
 
 pub fn run() -> Result<(), String> {
@@ -607,13 +643,17 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
     };
     core::account::harvest();
     app.reload();
-    // 启动只查当前账号；没有 current 时查第一个正常账号。网络任务不锁住浏览操作。
-    let startup = startup_quota_target(&app);
-    if let Some(startup) = startup {
+    // 账号规模以个位数为主：启动后单线程顺序查询全部正常账号，结果逐个回填；
+    // 不引入并发刷新与额外锁竞争，网络任务也不阻塞浏览和退出。
+    let startup = quota_targets(&app);
+    if !startup.is_empty() {
         app.quota_busy = true;
-        app.quota_pending.insert(startup.0.clone());
-        app.quota_errors.remove(&startup.0);
-        spawn_quota(app.tx.clone(), vec![startup]);
+        for (id, _) in &startup {
+            app.quota_pending.insert(id.clone());
+            app.quota_errors.remove(id);
+        }
+        app.push_log(format!("开始查询 {} 个账号的周剩余…", startup.len()));
+        spawn_quota(app.tx.clone(), startup);
     }
 
     while !app.should_quit {
@@ -636,23 +676,31 @@ fn event_loop(term: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Strin
                     app.reload();
                 }
                 Ev::QuotaOne { id, email, res } => {
-                    app.quota_pending.remove(&id);
-                    match res {
-                        Ok(q) => {
-                            app.quota_errors.remove(&id);
-                            app.quotas.insert(id, q);
-                        }
-                        Err(e) => {
-                            app.quotas.remove(&id);
-                            app.quota_errors.insert(id, e.clone());
-                            app.push_log(format!("✗ {}：{}", email, e));
-                        }
-                    }
+                    app.apply_quota_result(id, email, *res);
                 }
                 Ev::QuotaDone => {
                     app.quota_busy = false;
                     app.quota_now = App::now_secs();
-                    app.push_log("✅ 配额查询完成".to_string());
+                    match crate::recommendation::recommend(
+                        &app.accounts,
+                        app.current.as_deref(),
+                        &app.quotas,
+                    ) {
+                        Some(recommendation)
+                            if recommendation.reason
+                                == crate::recommendation::Reason::KeepCurrent =>
+                        {
+                            app.push_log(format!(
+                                "✅ 配额查询完成；建议继续使用 {}（周剩余 {}%）",
+                                recommendation.email, recommendation.weekly_remaining
+                            ));
+                        }
+                        Some(recommendation) => app.push_log(format!(
+                            "✅ 配额查询完成；建议使用 {}（周剩余 {}%）",
+                            recommendation.email, recommendation.weekly_remaining
+                        )),
+                        None => app.push_log("✅ 配额查询完成；暂无可用建议".to_string()),
+                    }
                 }
                 Ev::UpdateDone { res } => {
                     app.busy = None;
@@ -1118,12 +1166,7 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
                 app.push_log("ℹ 配额查询正在进行中".to_string());
                 return;
             }
-            let ids: Vec<(String, String)> = app
-                .accounts
-                .iter()
-                .filter(|a| !a.stale)
-                .map(|a| (a.id.clone(), a.email.clone()))
-                .collect();
+            let ids = quota_targets(app);
             if ids.is_empty() {
                 app.push_log("ℹ 没有可查的账号".to_string());
             } else {
@@ -1161,6 +1204,7 @@ fn exec_action(app: &mut App, term: &mut Terminal<CrosstermBackend<Stdout>>, act
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hangar_core::quota::{NamedWindow, QuotaWindow};
     use ratatui::backend::TestBackend;
 
     fn fake_account(id: &str, email: &str, stale: bool) -> Account {
@@ -1208,6 +1252,23 @@ mod tests {
         }
     }
 
+    fn weekly_quota(remaining: i32) -> Quota {
+        Quota {
+            plan: Some("Pro".to_string()),
+            windows: vec![NamedWindow {
+                label: "周".to_string(),
+                window: QuotaWindow {
+                    remaining: Some(remaining),
+                    limit_secs: Some(604_800),
+                    reset_in_secs: None,
+                    reset_at: None,
+                },
+            }],
+            reset_available: None,
+            reset_detail: None,
+        }
+    }
+
     fn screen_text(app: &mut App) -> String {
         screen_text_size(app, 120, 40)
     }
@@ -1240,6 +1301,7 @@ mod tests {
         assert!(t.contains("RT"), "missing refresh availability column");
         assert!(t.contains("unknown"), "missing local token health");
         assert!(!t.contains("0%"), "unloaded quota must not look exhausted");
+        assert!(!t.contains("5h"), "inactive 5h quota must not be shown");
     }
 
     #[test]
@@ -1333,13 +1395,60 @@ mod tests {
     }
 
     #[test]
-    fn startup_quota_prefers_current_and_falls_back_to_first_healthy() {
+    fn startup_quota_targets_every_healthy_account_in_library_order() {
         let mut app = fake_app();
-        assert_eq!(startup_quota_target(&app).unwrap().0, "id-1");
-        app.current = Some("id-2".to_string());
-        assert_eq!(startup_quota_target(&app).unwrap().0, "id-1");
+        assert_eq!(
+            quota_targets(&app),
+            vec![("id-1".into(), "alice@example.com".into())]
+        );
+        app.accounts[1].stale = false;
+        assert_eq!(
+            quota_targets(&app),
+            vec![
+                ("id-1".into(), "alice@example.com".into()),
+                ("id-2".into(), "bob@example.com".into())
+            ]
+        );
         app.accounts[0].stale = true;
-        assert!(startup_quota_target(&app).is_none());
+        app.accounts[1].stale = true;
+        assert!(quota_targets(&app).is_empty());
+    }
+
+    #[test]
+    fn overview_marks_weekly_recommendation_after_queries_finish() {
+        let mut app = fake_app();
+        app.accounts[1].stale = false;
+        app.quotas.insert("id-1".into(), weekly_quota(40));
+        app.quotas.insert("id-2".into(), weekly_quota(70));
+        let text = screen_text(&mut app);
+        assert!(text.contains('★'), "recommended account badge missing");
+        assert!(text.contains("70%"), "weekly remaining missing");
+        assert!(!text.contains("5h"), "inactive 5h quota must not be shown");
+    }
+
+    #[test]
+    fn quota_result_updates_refreshed_account_snapshot() {
+        let mut app = fake_app();
+        app.quota_pending.insert("id-1".into());
+        let mut refreshed = app.accounts[0].clone();
+        refreshed.access_token = "refreshed-at".into();
+        refreshed.refresh_token = "rotated-rt".into();
+
+        app.apply_quota_result(
+            "id-1".into(),
+            "alice@example.com".into(),
+            Ok((refreshed, weekly_quota(66))),
+        );
+
+        assert_eq!(app.accounts[0].access_token, "refreshed-at");
+        assert_eq!(app.accounts[0].refresh_token, "rotated-rt");
+        assert_eq!(
+            app.quotas
+                .get("id-1")
+                .and_then(crate::recommendation::weekly_remaining),
+            Some(66)
+        );
+        assert!(!app.quota_pending.contains("id-1"));
     }
 
     #[test]
