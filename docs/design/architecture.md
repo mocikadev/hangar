@@ -46,6 +46,13 @@
 - 三个用户界面共享 `do_login/doctor_lines/switch_account` 等组合函数，不允许复制业务逻辑
 - v0.5 起 GUI 冻结为维护模式；一次性 CLI 与 TUI 是新能力主入口，classic 仅保留基础兼容
 
+### CI 与发布边界
+
+- CLI/Core 与 GUI 使用独立的路径触发 CI；`core` 或 workspace 依赖变化同时触发两者，前端私有变化只触发所属流水线。
+- `vX.Y.Z` 是 CLI 发布通道，只生成 Linux/macOS 独立二进制，并保持为 GitHub `latest`，供安装脚本和 CLI 自升级使用。
+- `gui-vX.Y.Z` 是 GUI 发布通道，只生成 Linux/macOS 安装包且不抢占 `latest`；Windows GUI 仅作源码兼容门禁。
+- crate 依赖方向保持 `cli/gui → core`；工作流拆分只映射现有构建边界，不引入新的运行时依赖。
+
 ### CLI 协议边界
 
 - 参数解析、账号选择、输出格式和退出码属于 `crates/cli`，不得进入 core

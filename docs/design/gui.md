@@ -94,10 +94,9 @@ cargo workspace 内不允许两个 bin 同名（CLI 已占 `hangar`，产物会�
 ### 产物与流水线
 
 - `tauri-bundler` 独立使用（不引 Tauri runtime）：macOS `.dmg`、Linux `.deb` / `.rpm` / `.AppImage`，Linux 附 `.desktop` 启动器；Windows `nsis .exe` 配置保留但不进入 v0.5.0 Release。
-- 版本号与 cli 同源（发版一起 bump，tag 校验覆盖 gui 包名）。
-- v0.5.0 Release 资产覆盖 `linux-amd64`、`linux-arm64`、`macos-amd64`、`macos-arm64`；Windows 资产延期；
-  `install.sh` 不动（CLI 用户）；GUI 用户从 Release 页下载安装包。
-- CI 在 Linux、macOS、Windows 执行 GUI 构建，release 矩阵负责各平台正式产物。
+- GUI 使用独立版本与 `gui-vX.Y.Z` 标签，标签同时校验 GUI Cargo 和 Tauri bundle 版本；CLI 版本变化不再要求同步重发 GUI。
+- GUI Release 资产覆盖 `linux-amd64`、`linux-arm64`、`macos-amd64`、`macos-arm64`；Windows 资产延期；GUI Release 不设为 GitHub latest，`install.sh` 始终服务 CLI 用户。
+- GUI/Core 或 workspace 依赖变化时，GUI CI 在 Linux、macOS、Windows 执行定向 clippy/test；正式安装包仅由独立 GUI release 矩阵生成。
 
 ## 9. 测试策略
 

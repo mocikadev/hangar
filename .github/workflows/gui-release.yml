@@ -1,9 +1,9 @@
-name: Release · CLI
+name: Release · GUI
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'gui-v*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,22 +13,27 @@ permissions:
 
 jobs:
   verify:
-    name: Verify release tag
+    name: Verify GUI release tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Check tag matches CLI Cargo.toml version
+      - name: Check tag matches GUI and bundle versions
         run: |
           TAG="${GITHUB_REF_NAME}"
-          CARGO_VERSION="v$(grep '^version' crates/cli/Cargo.toml | head -1 | cut -d'"' -f2)"
+          CARGO_VERSION="gui-v$(grep '^version' crates/gui/Cargo.toml | head -1 | cut -d'"' -f2)"
+          TAURI_VERSION="gui-v$(grep '"version"' crates/gui/tauri.conf.json | head -1 | cut -d'"' -f4)"
           if [ "$TAG" != "$CARGO_VERSION" ]; then
-            echo "error: tag '$TAG' does not match crates/cli/Cargo.toml version '$CARGO_VERSION'"
+            echo "error: tag '$TAG' does not match crates/gui/Cargo.toml version '$CARGO_VERSION'"
+            exit 1
+          fi
+          if [ "$TAG" != "$TAURI_VERSION" ]; then
+            echo "error: tag '$TAG' does not match tauri.conf.json version '$TAURI_VERSION'"
             exit 1
           fi
           echo "OK: $TAG"
 
   build:
-    name: Build · ${{ matrix.artifact }}
+    name: Build GUI · ${{ matrix.artifact }}
     needs: verify
     strategy:
       fail-fast: false
@@ -38,18 +43,22 @@ jobs:
             runner: ubuntu-latest
             use-cross: true
             artifact: linux-amd64
+            bundles: "deb rpm appimage"
           - target: aarch64-unknown-linux-musl
             runner: ubuntu-latest
             use-cross: true
             artifact: linux-arm64
+            bundles: "deb"
           - target: x86_64-apple-darwin
             runner: macos-latest
             use-cross: false
             artifact: macos-amd64
+            bundles: "dmg"
           - target: aarch64-apple-darwin
             runner: macos-latest
             use-cross: false
             artifact: macos-arm64
+            bundles: "dmg"
 
     runs-on: ${{ matrix.runner }}
     steps:
@@ -61,7 +70,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: gui-${{ matrix.target }}
 
       - name: Install cross
         if: matrix.use-cross
@@ -69,26 +78,41 @@ jobs:
         with:
           tool: cross
 
-      - name: Build
+      - name: Build GUI
         run: |
           if [ "${{ matrix.use-cross }}" = "true" ]; then
-            cross build --release -p hangar --target ${{ matrix.target }}
+            cross build --release -p hangar-gui --target ${{ matrix.target }}
           else
-            cargo build --release -p hangar --target ${{ matrix.target }}
+            cargo build --release -p hangar-gui --target ${{ matrix.target }}
           fi
 
-      - name: Stage artifact
-        run: cp target/${{ matrix.target }}/release/hangar hangar-${{ matrix.artifact }}
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Bundle installers
+        working-directory: crates/gui
+        run: cargo tauri bundle --config tauri.conf.json --bundles ${{ matrix.bundles }} --target ${{ matrix.target }} --ci
+
+      - name: Stage installers
+        shell: bash
+        run: |
+          BUNDLE="target/${{ matrix.target }}/release/bundle"
+          find "$BUNDLE" -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.dmg" -o -name "*.AppImage" \) -exec cp {} . \;
+          find . -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.dmg" -o -name "*.AppImage" \) -print
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: hangar-${{ matrix.artifact }}
-          path: hangar-${{ matrix.artifact }}
+          name: hangar-gui-${{ matrix.artifact }}
+          path: |
+            *.deb
+            *.rpm
+            *.dmg
+            *.AppImage
           retention-days: 1
 
   release:
-    name: Create GitHub Release
+    name: Create GUI GitHub Release
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -110,7 +134,10 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           files: |
-            artifacts/hangar-*
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.dmg
+            artifacts/*.AppImage
             artifacts/SHA256SUMS.txt
           generate_release_notes: true
-          make_latest: true
+          make_latest: false

@@ -1,6 +1,6 @@
 # 版本发布与自升级机制设计（update-mechanism）
 
-> 状态：已实施并经 v0.3.0-v0.4.0 发版验证；v0.5.0 延续 Linux/macOS 发布范围与 RPM/跨平台门禁
+> 状态：已实施并经 v0.3.0-v0.6.0 发版验证；后续 CLI 与 GUI 采用独立发布通道
 > 对标：`mocika-skills-cli`（`skm`）的 CI 打包 + 自升级链路，按 hangar 约束裁剪
 > 远端：`git@github.com:mocikadev/hangar.git`
 
@@ -8,7 +8,7 @@
 
 hangar 当前无版本发布流程、无升级能力，用户只能本地 `cargo build`。目标是建立闭环：
 
-1. 打 tag 自动产出本轮 Linux/macOS 四个 target 的二进制、GUI 安装包与 `SHA256SUMS.txt`；Windows 产物延期；
+1. CLI 或 GUI 标签分别产出本轮 Linux/macOS 资产与各自的 `SHA256SUMS.txt`；Windows 产物延期；
 2. `hangar` 启动时自动检查升级（24h 缓存节流），有新版自动升完退出；
 3. TUI 命令面板 / classic 菜单各一个手动“检查更新”入口，行为对等；
 4. 离线/限流/失败时永远静默放行，不阻塞正常使用。
@@ -20,19 +20,22 @@ hangar 当前无版本发布流程、无升级能力，用户只能本地 `cargo
 - 二进制版本号 = `crates/cli/Cargo.toml` 的 `version`，代码内一律 `env!("CARGO_PKG_VERSION")` 获取，不手写版本号字符串。
 - `hangar-core` 版本保持内部库版本，不参与发布比较。
 - Release tag 格式 `v{cli版本}`（如 `v0.3.0`），CI 的 `verify` job 强制 `tag == v$(cli Cargo.toml version)`，不一致直接失败。
-- 发版步骤：改 `crates/cli/Cargo.toml` → commit → `git tag vX.Y.Z` → push（含 tag）→ Release 自动生成。
+- CLI 发版步骤：改 `crates/cli/Cargo.toml` → commit → `git tag vX.Y.Z` → push（含 tag）→ CLI Release 自动生成并成为 GitHub `latest`。
+- GUI 独立使用 `gui-v{gui版本}`，同时校验 GUI Cargo 与 Tauri bundle 版本；GUI Release 显式 `make_latest: false`，不得影响 CLI 安装和自升级。
 
 ## 3. CI / Release（照抄 skm，改名适配）
 
-新增两个 workflow（内容结构与 skm 一致，仅二进制名/产物名替换）：
+工作流按现有 crate 与发布边界拆分：
 
-- `.github/workflows/ci.yml`：Linux/macOS/Windows 执行 clippy/test/GUI build，Windows 仅作代码兼容门禁、不产出 v0.5.0 Release 资产。
-- `.github/workflows/release.yml`：仅 `v*` tag 触发 → verify 版本一致性 → 本轮四个 target 构建：
+- `.github/workflows/ci.yml`：CLI/Core 路径触发，Linux/macOS/Windows 执行定向 clippy/test。
+- `.github/workflows/gui-ci.yml`：GUI/Core 路径触发，Linux/macOS/Windows 执行 GUI 定向 clippy/test；不再追加重复 build。
+- `.github/workflows/release.yml`：仅 `v*` tag 触发 → 校验 CLI 版本 → 本轮四个 target 构建：
   - `x86_64-unknown-linux-musl`（cross）→ `hangar-linux-amd64`
   - `aarch64-unknown-linux-musl`（cross）→ `hangar-linux-arm64`
   - `x86_64-apple-darwin` → `hangar-macos-amd64`
   - `aarch64-apple-darwin` → `hangar-macos-arm64`
-  → `SHA256SUMS.txt` → `softprops/action-gh-release` 发 Release。
+  → `SHA256SUMS.txt` → `softprops/action-gh-release` 发 CLI Release 并标为 latest。
+- `.github/workflows/gui-release.yml`：仅 `gui-v*` tag 触发 → 校验 GUI/Tauri 版本 → Linux amd64/arm64 与 macOS amd64/arm64 安装包 → 独立校验文件 → 非 latest GUI Release。
 
 `install.sh` 继续服务 Linux/macOS。`install.ps1` 与 Windows target 映射保留供后续恢复发布，但 v0.5.0 的 latest Release 不包含 Windows 资产，README 不再引导用 latest 安装 Windows 版本。
 
@@ -129,7 +132,8 @@ pub fn last_check_secs() -> Option<u64>  // 读缓存，供 doctor 展示
 
 ## 10. 验收标准
 
-- `v*` tag 推送后 5 产物 + SHA256 自动出现在 GitHub Release；
+- `v*` tag 推送后 4 个 CLI 产物 + SHA256 自动出现在 latest GitHub Release；
+- `gui-v*` tag 推送后只出现 Linux/macOS GUI 安装包 + SHA256，且不改变 latest；
 - 新版发布后 24h 内，老版本启动一次即自动升级并退出（沙箱可复现）；
 - 无网络时启动延迟增加 ≤ 总超时且必进 TUI；
 - SHA256 篡改演练中拒绝替换、旧二进制可用；

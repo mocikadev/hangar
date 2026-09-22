@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | 
 
 ### 桌面版（GUI）
 
-在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（v0.6.0 提供 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`；Windows GUI 资产延期）。GUI 继续维护现有账号、配额与托盘能力；后续新增的自动化能力优先进入 CLI/TUI。
+在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（v0.6.0 提供 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`；Windows GUI 资产延期）。后续 GUI 安装包使用独立的 `gui-vX.Y.Z` 发布标签，不随每个 CLI 版本重复打包；GUI 继续维护现有账号、配额与托盘能力。
 
 ### 更新
 

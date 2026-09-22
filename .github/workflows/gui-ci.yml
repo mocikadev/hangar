@@ -1,4 +1,5 @@
-name: CI · CLI/Core
+name: CI · GUI
+
 on:
   push:
     branches: [main]
@@ -6,26 +7,25 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'crates/core/**'
-      - 'crates/cli/**'
-      - 'install.sh'
-      - 'install.ps1'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/release.yml'
+      - 'crates/gui/**'
+      - '.github/workflows/gui-ci.yml'
+      - '.github/workflows/gui-release.yml'
   pull_request:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'crates/core/**'
-      - 'crates/cli/**'
-      - 'install.sh'
-      - 'install.ps1'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/release.yml'
+      - 'crates/gui/**'
+      - '.github/workflows/gui-ci.yml'
+      - '.github/workflows/gui-release.yml'
+  workflow_dispatch:
+
 env:
   CARGO_TERM_COLOR: always
+
 jobs:
   check:
-    name: CLI/Core · ${{ matrix.os }}
+    name: GUI · ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -39,5 +39,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux'
         run: cargo fmt --check
-      - run: cargo clippy -p hangar-core -p hangar --all-targets -- -D warnings
-      - run: cargo test -p hangar-core -p hangar
+      - run: cargo clippy -p hangar-gui --all-targets -- -D warnings
+      - run: cargo test -p hangar-gui

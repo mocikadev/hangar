@@ -3,7 +3,7 @@
 ## 现状
 
 - 当前 workspace 为 76 项自动化测试（hangar-core 35 + CLI 单元 17 + CLI 二进制集成 11 + GUI 13），`cargo test` 单命令运行
-- GitHub Actions 在 Linux/macOS/Windows 跑 clippy/test/GUI build，Linux 额外执行 fmt 门禁
+- GitHub Actions 在 Linux/macOS/Windows 分别运行 CLI/Core 与 GUI 的定向 clippy/test；core 或锁文件变化触发两条流水线，Linux 额外执行 fmt 门禁
 - CLI 已有隔离沙箱集成测试；端到端依赖 TUI 真实 PTY/tmux 冒烟与 GUI 三平台真机验收
 
 ## 分层测试策略
@@ -36,4 +36,4 @@
 - [x] v0.5 新能力在一次性 CLI 与 TUI 可达；classic/GUI 若不接入须符合冻结边界，shared core 回归通过
 - [x] JSON 输出不含 token，未知参数/选择歧义/守卫失败具有非零退出码
 - [x] 真机冒烟已做并声明覆盖范围（见 v0.5.0 CLI/TUI 计划验收记录）
-- [x] Linux/macOS/Windows 的 `cfg` 分支至少在对应 runner 完成 clippy/build
+- [x] Linux/macOS/Windows 的 `cfg` 分支至少在对应 runner 完成定向 clippy/test；GUI 不再追加重复 build
