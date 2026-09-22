@@ -18,6 +18,7 @@
 | CLI 文件集成 | 隔离 HOME/CODEX_HOME 后调用二进制，断言 stdout/stderr/退出码及文件副作用 | cli integration tests |
 | GUI reducer/托盘守卫 | 构造 `App`/事件直接断言，不启动窗口 | gui app.rs / tray.rs |
 | 端到端 | 真实 PTY 或 tmux 冒烟：验证启动、按键、命令面板与退出 | 人工/会话内 |
+| 自升级 | 用已安装旧版在隔离 HOME/CODEX_HOME 执行正式 Release 升级，核对线上 SHA、原地替换、重复执行与真实配置不变 | 人工/发布后 |
 | 真实凭据链路 | 用户真机操作回报输出（登录/刷新/配额成功路径不可离线模拟） | 用户协同 |
 
 ## 已知约束（写测试时必读）
@@ -34,4 +35,4 @@
 - [x] v0.5 新能力在一次性 CLI 与 TUI 可达；classic/GUI 若不接入须符合冻结边界，shared core 回归通过
 - [x] JSON 输出不含 token，未知参数/选择歧义/守卫失败具有非零退出码
 - [x] 真机冒烟已做并声明覆盖范围（见 v0.5.0 CLI/TUI 计划验收记录）
-- [ ] Linux/macOS/Windows 的 `cfg` 分支至少在对应 runner 完成 clippy/build
+- [x] Linux/macOS/Windows 的 `cfg` 分支至少在对应 runner 完成 clippy/build
