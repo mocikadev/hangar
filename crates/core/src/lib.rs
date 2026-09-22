@@ -16,6 +16,7 @@ pub mod login;
 pub mod oauth;
 pub mod process;
 pub mod quota;
+pub mod token_health;
 pub mod updater;
 
 pub use account::{

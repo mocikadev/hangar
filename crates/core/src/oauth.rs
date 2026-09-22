@@ -336,9 +336,9 @@ pub fn login_codex_with(hooks: &dyn LoginHooks) -> Result<Account, String> {
         .as_secs();
     // expires_in 缺失时回退 1 小时（官方 AT 小时级寿命），避免 expires_at=0
     // 导致每次切换都烧一次 RT 轮换；saturating_add 防服务端异常大值溢出 panic
-    let expires_at = token
-        .expires_in
-        .map(|exp| now.saturating_add(exp))
+    let expires_at = crate::token_health::jwt_exp(&token.access_token)
+        .and_then(|exp| u64::try_from(exp).ok())
+        .or_else(|| token.expires_in.map(|exp| now.saturating_add(exp)))
         .unwrap_or_else(|| now.saturating_add(3600));
 
     Ok(Account {
@@ -364,19 +364,80 @@ pub struct TokenResponse {
     pub token_type: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RefreshError {
+    AuthRejected {
+        status: u16,
+        code: Option<String>,
+        body_len: usize,
+    },
+    Transport(String),
+    InvalidResponse(String),
+}
+
+impl std::fmt::Display for RefreshError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AuthRejected {
+                status,
+                code,
+                body_len,
+            } => {
+                write!(f, "Token 刷新请求失败: HTTP {status}")?;
+                if let Some(code) = code {
+                    write!(f, ", error_code={code}")?;
+                }
+                write!(f, ", body_len={body_len}")
+            }
+            Self::Transport(message) | Self::InvalidResponse(message) => f.write_str(message),
+        }
+    }
+}
+
+impl RefreshError {
+    pub fn is_auth_rejection(&self) -> bool {
+        match self {
+            Self::AuthRejected { status, code, .. } => {
+                *status == 401
+                    || code.as_deref().is_some_and(|code| {
+                        matches!(
+                            code.to_ascii_lowercase().as_str(),
+                            "invalid_grant"
+                                | "refresh_token_reused"
+                                | "token_invalidated"
+                                | "authentication_token_invalidated"
+                                | "unauthorized"
+                        )
+                    })
+            }
+            _ => false,
+        }
+    }
+}
+
 /// 用 refresh_token 静默换新 token（与 cockpit-tools refresh_access_token 一致）
-pub fn refresh_access_token(refresh_token: &str) -> Result<TokenResponse, String> {
-    send_form_checked(
-        TOKEN_ENDPOINT,
-        &[
+pub fn refresh_access_token(refresh_token: &str) -> Result<TokenResponse, RefreshError> {
+    let response = http_agent()
+        .post(TOKEN_ENDPOINT)
+        .send_form(&[
             ("client_id", CLIENT_ID),
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),
-        ],
-        "Token 刷新请求",
-    )?
-    .into_json::<TokenResponse>()
-    .map_err(|e| format!("解析 Token 刷新响应失败: {}", e))
+        ])
+        .map_err(|error| match error {
+            ureq::Error::Status(status, response) => {
+                let body = response.into_string().unwrap_or_default();
+                RefreshError::AuthRejected {
+                    status,
+                    code: extract_token_error_code(&body),
+                    body_len: body.len(),
+                }
+            }
+            other => RefreshError::Transport(format!("Token 刷新请求失败: {other}")),
+        })?;
+    response
+        .into_json::<TokenResponse>()
+        .map_err(|error| RefreshError::InvalidResponse(format!("解析 Token 刷新响应失败: {error}")))
 }
 
 /// 统一处理 ureq 请求：非 2xx 时只带状态码 + error_code + body_len，
@@ -531,5 +592,23 @@ mod tests {
             Some("refresh_token_reused")
         );
         assert!(extract_token_error_code("not json").is_none());
+    }
+
+    #[test]
+    fn refresh_error_classifies_auth_without_string_matching() {
+        let auth = RefreshError::AuthRejected {
+            status: 400,
+            code: Some("invalid_grant".to_string()),
+            body_len: 123,
+        };
+        assert!(auth.is_auth_rejection());
+        assert!(!auth.to_string().contains("secret"));
+        assert!(!RefreshError::AuthRejected {
+            status: 400,
+            code: Some("temporarily_unavailable".to_string()),
+            body_len: 0,
+        }
+        .is_auth_rejection());
+        assert!(!RefreshError::Transport("timeout".to_string()).is_auth_rejection());
     }
 }

@@ -45,7 +45,7 @@ impl CommandError {
 }
 
 fn load_after_harvest() -> Result<AccountsFile, CommandError> {
-    core::account::harvest();
+    core::account::harvest_checked().map_err(CommandError::internal)?;
     core::account::load_accounts().map_err(CommandError::internal)
 }
 
@@ -60,7 +60,7 @@ fn selected(file: &AccountsFile, value: &str) -> Result<Account, CommandError> {
 fn selected_after_harvest(value: &str) -> Result<(AccountsFile, Account), CommandError> {
     let before = core::account::load_accounts().map_err(CommandError::internal)?;
     let target_id = selected(&before, value)?.id;
-    core::account::harvest();
+    core::account::harvest_checked().map_err(CommandError::internal)?;
     let after = core::account::load_accounts().map_err(CommandError::internal)?;
     let target = after
         .accounts
@@ -204,11 +204,18 @@ pub fn execute(command: Command, json: bool) -> Result<(), CommandError> {
             }
         }
         Command::Harvest => {
-            core::account::harvest();
-            let file = core::account::load_accounts().map_err(CommandError::internal)?;
+            let report = core::account::harvest_checked().map_err(CommandError::internal)?;
             output::success(
                 "harvest",
-                &format!("已收敛凭据，共 {} 个账号", file.accounts.len()),
+                &format!(
+                    "已收敛凭据，共 {} 个账号{}",
+                    report.account_count,
+                    if report.changed {
+                        "（有更新）"
+                    } else {
+                        ""
+                    }
+                ),
                 json,
             );
         }

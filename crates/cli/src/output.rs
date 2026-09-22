@@ -1,8 +1,19 @@
-use hangar_core::account::{jwt_exp, Account, AccountsFile};
+use hangar_core::account::{Account, AccountsFile};
 use hangar_core::quota::{reset_at_ts, Quota};
 use serde_json::{json, Value};
 
 fn safe_account(account: &Account, current: bool) -> Value {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let health = hangar_core::token_health::assess(
+        &account.access_token,
+        &account.refresh_token,
+        account.expires_at,
+        account.stale,
+        now,
+    );
     json!({
         "id": account.id,
         "email": account.email,
@@ -10,8 +21,15 @@ fn safe_account(account: &Account, current: bool) -> Value {
         "stale": account.stale,
         "account_id": account.account_id,
         "organization_id": account.organization_id,
-        "expires_at": jwt_exp(&account.access_token)
-            .or((account.expires_at > 0).then_some(account.expires_at as i64)),
+        "expires_at": health.expires_at,
+        "token_health": {
+            "status": health.label(),
+            "refresh_available": health.has_refresh_token,
+            "expiry_source": health.expiry_source.map(|source| match source {
+                hangar_core::token_health::ExpirySource::Jwt => "jwt",
+                hangar_core::token_health::ExpirySource::Ledger => "ledger",
+            }),
+        },
     })
 }
 
@@ -22,7 +40,7 @@ pub fn accounts(file: &AccountsFile, json_output: bool) {
             .iter()
             .map(|a| safe_account(a, file.current_account_id.as_deref() == Some(a.id.as_str())))
             .collect();
-        println!("{}", json!({ "accounts": rows }));
+        println!("{}", json!({ "schema_version": 1, "accounts": rows }));
         return;
     }
     if file.accounts.is_empty() {
@@ -45,7 +63,7 @@ pub fn current(account: Option<&Account>, json_output: bool) {
     if json_output {
         println!(
             "{}",
-            json!({ "current": account.map(|a| safe_account(a, true)) })
+            json!({ "schema_version": 1, "current": account.map(|a| safe_account(a, true)) })
         );
     } else if let Some(account) = account {
         println!("{}\t{}", account.id, account.email);

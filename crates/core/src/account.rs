@@ -464,17 +464,27 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
-/// 提前刷新阈值（秒），与 cockpit-tools 的 TOKEN_REFRESH_SKEW_SECONDS 一致
-const REFRESH_SKEW_SECS: u64 = 300;
-
 /// harvest 收编/更新凭据后的视为有效时长（秒）。
 /// 官方 auth.json 无过期时间；凭据既来自官方刚刷新的文件，视为 1 小时有效，
 /// 避免每次启动都无谓刷新消耗 RT 轮换寿命
 const HARVEST_VALIDITY_SECS: u64 = 3600;
 
-/// 收敛入口：每次命令启动时统一执行（官方 → 库 反向同步 + 新账号收编）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HarvestReport {
+    pub changed: bool,
+    pub account_count: usize,
+}
+
+/// 收敛入口：启动期 best-effort 使用；错误会记录但不阻止界面启动。
 pub fn harvest() {
-    harvest_from_official_auth();
+    if let Err(error) = harvest_checked() {
+        crate::emit::emit_err(format!("收敛官方 auth.json 失败：{error}"));
+    }
+}
+
+/// 显式收敛入口：命令与需要可靠结果的调用方必须处理错误。
+pub fn harvest_checked() -> Result<HarvestReport, String> {
+    with_accounts_lock(harvest_locked)
 }
 
 /// 从官方 auth.json 回收最新凭据（harvest）。
@@ -483,28 +493,23 @@ pub fn harvest() {
 /// 若不回收，账号库中的旧 RT 会失效。识别归属：解码 id_token（JWT）中的
 /// email 声明匹配账号（官方轮换后 token 全变，唯 email 不变）。
 /// 发现任何 token 字段与库中不同即采纳官方值并落盘。
-fn harvest_from_official_auth() {
-    // 全程持锁：load→改→save 原子化，防双实例交错覆盖
-    let _ = with_accounts_lock(|| {
-        harvest_locked()?;
-        Ok(())
-    });
-}
-
-fn harvest_locked() -> Result<(), String> {
+fn harvest_locked() -> Result<HarvestReport, String> {
     let file = load_accounts()?;
-    // 注意：空账号库不做早退——空库正是收编官方新账号最需要的场景（S5）
-    let Ok(home) = codex_home() else {
-        return Ok(());
+    let initial_account_count = file.accounts.len();
+    let unchanged = || HarvestReport {
+        changed: false,
+        account_count: initial_account_count,
     };
+    // 注意：空账号库不做早退——空库正是收编官方新账号最需要的场景（S5）
+    let home = codex_home()?;
     let Ok(content) = std::fs::read_to_string(home.join("auth.json")) else {
-        return Ok(());
+        return Ok(unchanged());
     };
     let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return Ok(());
+        return Ok(unchanged());
     };
     let Some(tokens) = v.get("tokens") else {
-        return Ok(());
+        return Ok(unchanged());
     };
 
     let get = |k: &str| {
@@ -516,7 +521,7 @@ fn harvest_locked() -> Result<(), String> {
     };
     let (at, rt, idt) = (get("access_token"), get("refresh_token"), get("id_token"));
     if at.is_empty() && rt.is_empty() {
-        return Ok(());
+        return Ok(unchanged());
     }
 
     // id_token 是 JWT：payload(base64) 中的 email 标识归属
@@ -526,7 +531,7 @@ fn harvest_locked() -> Result<(), String> {
         .and_then(decode_jwt_email)
         .map(|e| crate::account::normalize_email(&e));
     let Some(email) = email_claim else {
-        return Ok(());
+        return Ok(unchanged());
     };
 
     let mut changed = false;
@@ -604,7 +609,9 @@ fn harvest_locked() -> Result<(), String> {
             // token 变了说明官方刚刷新过（access_token 生命周期通常 ~小时级），
             // 给 1 小时余量：既避免每次启动都无谓刷新，又保证过期前会真正续期
             if changed {
-                acc.expires_at = now + HARVEST_VALIDITY_SECS;
+                acc.expires_at = crate::token_health::jwt_exp(&acc.access_token)
+                    .and_then(|exp| u64::try_from(exp).ok())
+                    .unwrap_or(now + HARVEST_VALIDITY_SECS);
                 // 官方凭据是新鲜的（重新登录/刚刷新），stale 状态随之解除
                 acc.stale = false;
             }
@@ -613,13 +620,16 @@ fn harvest_locked() -> Result<(), String> {
             // S5 反向收编：用户在官方 CLI 手动登录了库中不存在的新账号，
             // 采纳为库中新账号，避免官方凭据丢失
             let id = uuid::Uuid::new_v4().to_string();
+            let expires_at = crate::token_health::jwt_exp(&at)
+                .and_then(|exp| u64::try_from(exp).ok())
+                .unwrap_or(now + HARVEST_VALIDITY_SECS);
             file.accounts.push(Account {
                 id: id.clone(),
                 email: email.clone(),
                 access_token: at,
                 refresh_token: rt,
                 id_token: idt,
-                expires_at: now + HARVEST_VALIDITY_SECS,
+                expires_at,
                 stale: false,
                 account_id: official_account_id.clone(),
                 organization_id: official_org_id.clone(),
@@ -644,15 +654,14 @@ fn harvest_locked() -> Result<(), String> {
     }
 
     if changed {
-        match save_accounts_unlocked(&file) {
-            Ok(_) => crate::emit::emit(format!("⟳ 已从官方 auth.json 回收最新凭据（{}）", email)),
-            // 保存失败不能静默：凭据已更新但没落盘，下次启动仍会用旧 RT 刷新失败
-            Err(e) => {
-                crate::emit::emit_err(format!("已回收官方新凭据（{}）但落盘失败：{}", email, e))
-            }
-        }
+        save_accounts_unlocked(&file)
+            .map_err(|error| format!("已回收官方新凭据（{email}）但落盘失败：{error}"))?;
+        crate::emit::emit(format!("⟳ 已从官方 auth.json 回收最新凭据（{}）", email));
     }
-    Ok(())
+    Ok(HarvestReport {
+        changed,
+        account_count: file.accounts.len(),
+    })
 }
 
 /// 解码 JWT payload（base64url JSON）提取 email 字段
@@ -687,7 +696,7 @@ fn decode_jwt_payload_value(token: &str) -> Option<serde_json::Value> {
 
 /// JWT exp（秒级）解析，失败返回 None（视为未知，不过度刷新）
 pub fn jwt_exp(token: &str) -> Option<i64> {
-    decode_jwt_payload_value(token.trim())?.get("exp")?.as_i64()
+    crate::token_health::jwt_exp(token)
 }
 
 /// JWT 是否已过期或进入 300s 偏斜窗口（对齐 cockpit-tools TOKEN_REFRESH_SKEW_SECONDS）
@@ -699,7 +708,7 @@ pub fn is_jwt_expired_soon(token: &str) -> bool {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    exp < now + REFRESH_SKEW_SECS as i64
+    exp < now + crate::token_health::REFRESH_SKEW_SECS as i64
 }
 
 fn first_auth_string(v: &serde_json::Value, keys: &[&str]) -> Option<String> {
@@ -781,8 +790,20 @@ fn pick_fresh_id_token(new_id: Option<String>, current_id: &str) -> Option<Strin
     Some(new)
 }
 
+fn persist_stale_marker(account: &Account) -> Result<(), String> {
+    let mut file = load_accounts()?;
+    if let Some(stored) = file
+        .accounts
+        .iter_mut()
+        .find(|stored| stored.id == account.id)
+    {
+        stored.stale = true;
+    }
+    save_accounts(&file)
+}
+
 /// access_token 过期或 5 分钟内将过期时，用 refresh_token 静默换新并回存。
-/// 刷新失败（如 refresh_token 已被轮换失效）时返回原账号，由官方客户端兜底。
+/// 临时刷新失败时仅当原 AT 仍可安全使用才继续；否则拒绝投影官方登录态。
 /// force=true 跳过新鲜度检查（配额 401 后的重试链路用）。
 fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, String> {
     let now = SystemTime::now()
@@ -790,11 +811,26 @@ fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, Stri
         .unwrap_or_default()
         .as_secs();
 
-    if !force && account.expires_at > now + REFRESH_SKEW_SECS {
+    let before_health = crate::token_health::assess(
+        &account.access_token,
+        &account.refresh_token,
+        account.expires_at,
+        account.stale,
+        now,
+    );
+    if !force && !before_health.needs_refresh() {
         return Ok(account.clone()); // 还有效，无需刷新
     }
     if account.refresh_token.trim().is_empty() {
-        return Ok(account.clone()); // 无 RT 可刷，交给官方客户端
+        if before_health.can_project_without_refresh() {
+            return Ok(account.clone());
+        }
+        account.stale = true;
+        persist_stale_marker(account).map_err(|error| format!("无法保存账号失效状态：{error}"))?;
+        return Err(format!(
+            "账号 {} 的 access_token 已过期或不可用，且缺少 refresh_token；已拒绝切换并标记为需重新登录，未触碰官方登录态",
+            account.email
+        ));
     }
 
     crate::emit::emit("⟳ access_token 已过期/将过期，正在静默刷新...".to_string());
@@ -815,49 +851,42 @@ fn refresh_if_needed(account: &mut Account, force: bool) -> Result<Account, Stri
             if let Some(v) = extract_chatgpt_org_id(&account.access_token) {
                 account.organization_id = Some(v);
             }
-            account.expires_at = tok
-                .expires_in
-                .map(|exp| now.saturating_add(exp))
-                .unwrap_or_else(|| {
-                    // 响应缺 expires_in 且旧值已过期/为0时回退 1 小时，避免下次切换再烧一次 RT
-                    if account.expires_at > now {
-                        account.expires_at
-                    } else {
-                        now + HARVEST_VALIDITY_SECS
-                    }
-                });
+            account.expires_at = crate::token_health::jwt_exp(&account.access_token)
+                .and_then(|exp| u64::try_from(exp).ok())
+                .or_else(|| tok.expires_in.map(|exp| now.saturating_add(exp)))
+                .unwrap_or(now + HARVEST_VALIDITY_SECS);
             account.stale = false; // 刷新成功即恢复
 
             // 回存到账号库（调用方已持有 &mut，但账号库文件需同步落盘）
             Ok(account.clone())
         }
         Err(e) => {
-            // 区分 401（RT 彻底失效）与其他错误（网络等暂时性问题）：
-            // 401 标记 stale 并中止切换——绝不能把死凭据写进官方 auth.json
-            // 污染 Codex 当前正常工作的登录态；其他错误保留原状继续
-            let lower = e.to_ascii_lowercase();
-            let is_auth_failure = lower.contains("401")
-                || lower.contains("unauthorized")
-                || lower.contains("invalid_grant")
-                || lower.contains("refresh_token_reused")
-                || lower.contains("token_invalidated")
-                || lower.contains("authentication token has been invalidated");
-            if is_auth_failure {
-                account.stale = true;
-                // 立即把 stale 标记落盘（此处返回 Err 后 switch_account 不会走到保存）
-                if let Ok(mut f) = load_accounts() {
-                    if let Some(a) = f.accounts.iter_mut().find(|a| a.id == account.id) {
-                        a.stale = true;
-                    }
-                    let _ = save_accounts(&f);
+            match crate::token_health::classify_refresh_failure(
+                before_health,
+                e.is_auth_rejection(),
+            ) {
+                crate::token_health::RefreshFailureAction::MarkStale => {
+                    account.stale = true;
+                    persist_stale_marker(account).map_err(|error| {
+                        format!("刷新凭据已被拒绝，且无法保存失效状态：{error}")
+                    })?;
+                    Err(format!(
+                        "账号 {} 的凭据已过期（可能在 Codex 侧轮换时未收编），已拒绝继续以保护当前登录态；请对该账号重新登录复活一次",
+                        account.email
+                    ))
                 }
-                return Err(format!(
-                    "账号 {} 的凭据已过期（可能在 Codex 侧轮换时未收编），已拒绝继续以保护当前登录态；请对该账号重新登录复活一次",
-                    account.email
-                ));
+                crate::token_health::RefreshFailureAction::ContinueWithCurrentAccess => {
+                    crate::emit::emit_err(format!(
+                        "刷新失败（{}），现有 access_token 仍可用",
+                        e
+                    ));
+                    Ok(account.clone())
+                }
+                crate::token_health::RefreshFailureAction::AbortWithoutStale => Err(format!(
+                    "账号 {} 的 access_token 已过期或即将过期，临时刷新失败（{}）；已拒绝切换，未触碰官方登录态",
+                    account.email, e
+                )),
             }
-            crate::emit::emit_err(format!("刷新失败（{}），使用现有凭据继续", e));
-            Ok(account.clone())
         }
     }
 }
@@ -983,6 +1012,20 @@ fn switch_locked(account_id: &str) -> Result<(), String> {
         return Err(format!(
             "账号 {} 缺少 access_token 且无法刷新，已标为需重新登录（用「复活」处理），未触碰官方登录态",
             account.email
+        ));
+    }
+    let health = crate::token_health::assess(
+        &account.access_token,
+        &account.refresh_token,
+        account.expires_at,
+        account.stale,
+        now_secs(),
+    );
+    if !health.can_project_without_refresh() {
+        return Err(format!(
+            "账号 {} 的 access_token 状态为 {}，已拒绝切换，未触碰官方登录态",
+            account.email,
+            health.label()
         ));
     }
     // 刷新可能更新了 token，先落盘一次，保证官方写失败/崩溃时库中仍是新 RT

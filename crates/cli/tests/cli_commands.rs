@@ -97,6 +97,7 @@ fn list_json_is_structured_and_redacted() {
     assert!(output.status.success(), "stderr={}", text(&output.stderr));
     let stdout = text(&output.stdout);
     let value: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(value["schema_version"], 1);
     assert_eq!(value["accounts"][0]["email"], "alice@example.com");
     assert_eq!(value["accounts"][0]["current"], true);
     for secret in [
@@ -109,6 +110,33 @@ fn list_json_is_structured_and_redacted() {
     for field in ["access_token", "refresh_token", "id_token"] {
         assert!(!stdout.contains(field));
     }
+}
+
+#[test]
+fn expired_jwt_without_refresh_token_never_overwrites_official_auth() {
+    let mut expired = account("id-a", "alice@example.com", false);
+    expired["access_token"] = json!("x.eyJleHAiOjF9.y");
+    expired["refresh_token"] = json!("");
+    expired["expires_at"] = json!(9_999_999_999u64);
+    let sandbox = Sandbox::new(fixture(vec![expired], None));
+    let official = br#"{"sentinel":"keep-current-login"}"#;
+    std::fs::write(sandbox.codex_home.join("auth.json"), official).unwrap();
+
+    let output = sandbox.run(&["switch", "id-a", "--json"]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stderr={}",
+        text(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read(sandbox.codex_home.join("auth.json")).unwrap(),
+        official
+    );
+    let saved: Value =
+        serde_json::from_slice(&std::fs::read(sandbox.accounts_path()).unwrap()).unwrap();
+    assert_eq!(saved["accounts"][0]["stale"], true);
 }
 
 #[test]

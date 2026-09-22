@@ -91,16 +91,26 @@ pub fn doctor_lines(binary_version: &str) -> Result<(Vec<String>, usize), String
         {
             issues.push("缺 account_id（配额查询可能不准）");
         }
-        // doctor 与 TUI 详情一致：JWT exp 为准，显示具体日期时间
-        let at_exp = crate::account::jwt_exp(&acc.access_token).or(if acc.expires_at > 0 {
-            Some(acc.expires_at as i64)
-        } else {
-            None
-        });
-        let exp = match at_exp {
-            Some(ts) if ts <= now as i64 => "AT 已过期（切换时将静默刷新）".to_string(),
-            Some(ts) => format!("AT 至 {}", crate::quota::fmt_ts_local(ts)),
-            None => "AT 有效期未知".to_string(),
+        let health = crate::token_health::assess(
+            &acc.access_token,
+            &acc.refresh_token,
+            acc.expires_at,
+            acc.stale,
+            now,
+        );
+        let exp = match health.access {
+            crate::token_health::AccessTokenState::Missing => "AT 缺失".to_string(),
+            crate::token_health::AccessTokenState::Expired => {
+                "AT 已过期（切换前必须刷新）".to_string()
+            }
+            crate::token_health::AccessTokenState::Expiring => {
+                "AT 即将过期（切换前必须刷新）".to_string()
+            }
+            crate::token_health::AccessTokenState::Fresh => format!(
+                "AT 至 {}",
+                crate::quota::fmt_ts_local(health.expires_at.unwrap_or_default())
+            ),
+            crate::token_health::AccessTokenState::Unknown => "AT 有效期未知".to_string(),
         };
         if acc.stale {
             err(
