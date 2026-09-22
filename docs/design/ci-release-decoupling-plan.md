@@ -1,6 +1,6 @@
 # CLI/GUI CI 与发布解耦计划
 
-> 状态：本地实现与验证完成（2026-09-22；待远端 CI）
+> 状态：已完成（2026-09-22）
 
 ## 目标
 
@@ -44,8 +44,8 @@
 
 - [x] C09 静态校验工作流语法、路径矩阵、标签与资产契约
 - [x] C10 按序通过 `cargo fmt`、`cargo clippy -- -D warnings`、`cargo test`
-- [ ] C11 推送后确认 CLI/Core CI 与 GUI CI 三平台全绿
-- [ ] C12 确认不创建测试标签、不触发正式 Release，并记录验证证据
+- [x] C11 推送后确认 CLI/Core CI 与 GUI CI 三平台全绿
+- [x] C12 确认不创建测试标签、不触发正式 Release，并记录验证证据
 
 ## 验收标准
 
@@ -70,3 +70,4 @@
 - 静态契约断言通过：CLI CI 不引用 GUI；GUI CI 包含 core 触发且无额外 `cargo build`；两条 Release 各含 4 个 Linux/macOS target；CLI/GUI 分别设置 `make_latest: true/false`；GUI 发布无 Windows 资产。
 - 按序执行 `cargo fmt`、`cargo clippy -- -D warnings`、`cargo test` 全绿，共 76 项测试（CLI 单元 17、CLI 集成 11、core 35、GUI 13）。
 - 本轮不创建 `v*` 或 `gui-v*` 测试标签，避免产生正式 Release；发布工作流只做静态契约验证。
+- 提交 `56d95bd` 推送后，[CLI/Core CI run `35699117823`](https://github.com/mocikadev/hangar/actions/runs/35699117823) 与 [GUI CI run `35699117827`](https://github.com/mocikadev/hangar/actions/runs/35699117827) 均在 Ubuntu、macOS、Windows 全绿；未触发 `Release · CLI` 或 `Release · GUI`。
