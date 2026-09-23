@@ -3,7 +3,7 @@
 ## 现状
 
 - workspace 自动化测试由 `cargo test` 单命令运行；数量以本次测试输出为准，不在此固化过时计数
-- GitHub Actions 已在 Linux/macOS/Windows 运行 CLI/Core 定向 clippy/test，Linux 额外执行 fmt 门禁。macOS 原生 CI 配置另有 Core/UniFFI、Swift 排序测试及 Debug/Release App 构建；提交后尚需以实际 Actions 结果确认
+- GitHub Actions 已在 Linux/macOS/Windows 运行 CLI/Core 定向 clippy/test，Linux 额外执行 fmt 门禁。macOS 原生 CI 已实际通过 Core/UniFFI、Swift 排序测试及 Debug/Release App 构建；远端证据见原生迁移计划 N25
 - CLI 已有隔离沙箱集成测试；端到端依赖 TUI 真实 PTY/tmux 冒烟。原生 GUI 测试在对应平台工程创建后接入
 
 ## 分层测试策略

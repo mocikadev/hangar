@@ -58,7 +58,7 @@ apps/cli (CLI/TUI/classic) ----------------> crates/hangar-core
 
 ### CI 与发布边界
 
-- 已运行的 CI 证据仍只覆盖 CLI/Core，并在 Linux、macOS、Windows runner 执行定向检查。新增 `.github/workflows/native-macos-ci.yml` 将在 macOS runner 检查 Core/UniFFI、Swift 排序与 Debug/Release App 构建；提交并跑绿前只算配置完成，不算远端验证。
+- CLI/Core CI 已在 Linux、macOS、Windows runner 执行定向检查；`.github/workflows/native-macos-ci.yml` 已在 macOS runner 跑通 Core/UniFFI、Swift 排序与 Debug/Release App 构建。CI 构建不等于真机交互或已签名发行。
 - `vX.Y.Z` 是 CLI 发布通道，只生成 Linux/macOS 独立二进制，并保持为 GitHub `latest`，供安装脚本和 CLI 自升级使用。
 - 旧 egui GUI 发布工作流已删除；macOS 原生 GUI 使用独立 `macos-gui-vX.Y.Z` 通道，不设为 GitHub `latest`，不触发 CLI 安装脚本或自升级。首个原生版 0.7.0 沿用旧 GUI 的 `dev.mocika.hangar` 与 `Hangar.app`，而 CLI 仍是独立 `hangar` 命令。Linux 阶段在 Linux 主机另定发行入口，不复用三平台 Rust GUI 矩阵。
 - 当前 crate 依赖方向为 `apps/cli → crates/hangar-core` 与 `crates/hangar-uniffi → crates/hangar-core`；桥接不得成为 Core 或 CLI 的反向依赖。

@@ -211,7 +211,7 @@ Linux 阶段只在 Linux 主机开始，先读取本文已定共享语义，再�
 ### Phase 4：macOS 切换与发行
 
 - [x] N24 明确最低 macOS 版本、应用标识、版本策略和 CLI/GUI 共存安装名
-- [ ] N25 配置 macOS 专属 CI：Core/绑定/App 编译测试；本地命令已复演，待提交后 GitHub Actions 实际跑绿
+- [x] N25 配置 macOS 专属 CI：Core/绑定/App 编译测试；GitHub Actions 首次运行通过
 - [ ] N26 完成签名、公证、DMG、最终 SHA/产物清单与回退说明
 - [ ] N27 真机确认 7～8 个真实账号总览、刷新、推荐、切换、重登、菜单栏和 Dock 生命周期
 
@@ -276,6 +276,7 @@ Linux 阶段只在 Linux 主机开始，先读取本文已定共享语义，再�
 - 2026-09-23 按用户要求重新编译并从完整 Debug `.app` 启动真实 6 账号隔离副本；用户在该副本上对非当前账号完成定向重新登录，界面提示当前账号未改变。只读核对确认隔离账号库的 `current_account_id` 与真实源一致，隔离官方 `auth.json` 字节未变，目标账号 `stale=false`；真实源账号库与官方认证文件的 SHA-256 前后相同。结合前述 OAuth 回调、取消/错误、删除与自检证据，N21 勾选完成。测试 App 暂留给用户查看，退出后由隔离目录清理任务删除临时凭据。
 - 2026-09-23 N24：CLI 保持 0.7.0 与独立 `v*` 发布通道；macOS GUI 定为独立 0.7.0 / `macos-gui-v*`，Xcode Debug/Release 包内回读均为 Bundle ID `dev.mocika.hangar`、`CFBundleShortVersionString=0.7.0`、`CFBundleVersion=1.7.0`、最低系统声明 14.0，Mach-O 为 arm64、SDK 27.0。此前临时 `70000` 构建号不符合 Apple 的分段位数约束，已在发行前改正。macOS 14 真机、x64、旧 GUI 原位升级仍未验证。`cargo fmt → cargo clippy -- -D warnings → cargo test` 在隔离 HOME/CODEX_HOME 下通过（90 项测试）。
 - 2026-09-23 N25 配置进度：新增 `.github/workflows/native-macos-ci.yml`，仅在 macOS runner 检查 Core/UniFFI、独立 Swift 排序测试、Debug/Release App 编译与包身份/架构回读；不修改 CLI `v*` 发布工作流，也不签名或上传资产。本机复演 Swift 测试、两种构建、Info.plist/架构断言及 YAML 解析通过；GitHub Actions 尚未触发，N25 保持开放。按 `release-check` 门禁，N23 在原生发布流水线与最终资产校验建立前不称为 Release 候选；N26 签名、公证、DMG/SHA 仍未做。
+- 2026-09-23 推送 `b9e1667` 后，[macOS 原生 CI](https://github.com/mocikadev/hangar/actions/runs/35839411553) 首次运行成功：Core/UniFFI 的 fmt、clippy、隔离测试，Swift 排序测试，以及 Debug/Release App 构建和 Bundle ID/版本/最低系统/arm64 回读均通过，N25 收口。[CLI/Core CI](https://github.com/mocikadev/hangar/actions/runs/35839411536) 的 Linux、macOS、Windows 任务也全部成功。CI 不覆盖真实账号交互、旧 App 原位替换、macOS 14/x64、签名公证或 DMG/SHA；N23、N26、N27 仍开放。
 
 ## 8. 完成定义
 
