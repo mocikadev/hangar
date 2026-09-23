@@ -1,0 +1,4 @@
+[bindings.swift]
+module_name = "HangarCore"
+ffi_module_name = "HangarCoreFFI"
+generate_immutable_records = true

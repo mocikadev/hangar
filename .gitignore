@@ -1,3 +1,6 @@
 /target
+/build
+/apps/macos/build/
+/dist
 .superpowers/
 .atomcode/

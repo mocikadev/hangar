@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/core",
-    "crates/cli",
-    "crates/gui",
+    "crates/hangar-core",
+    "crates/hangar-uniffi",
+    "apps/cli",
 ]
 resolver = "2"
 
@@ -19,6 +19,8 @@ rand = "0.8"
 dirs = "5"
 libc = "0.2"
 open = "5"
+uniffi = "=0.32.1"
+thiserror = "2"
 
 [profile.release]
 strip = true

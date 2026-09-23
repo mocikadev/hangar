@@ -5,8 +5,8 @@ on:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - 'crates/core/**'
-      - 'crates/cli/**'
+      - 'crates/hangar-core/**'
+      - 'apps/cli/**'
       - 'install.sh'
       - 'install.ps1'
       - '.github/workflows/ci.yml'
@@ -15,8 +15,8 @@ on:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - 'crates/core/**'
-      - 'crates/cli/**'
+      - 'crates/hangar-core/**'
+      - 'apps/cli/**'
       - 'install.sh'
       - 'install.ps1'
       - '.github/workflows/ci.yml'

@@ -4,24 +4,24 @@
 
 ```
 hangar/
-├── Cargo.toml            # [workspace]：core + cli + gui，统一依赖版本，release 优化
-└── crates/
-    ├── core/             # hangar-core（库）：业务层，UI 无关
-    │   └── src/
-    │       ├── account.rs  # 账号库 CRUD/harvest/切换/复活/删除、原子写+文件锁、JWT 工具
-    │       ├── oauth.rs    # OAuth PKCE 登录、token 交换/刷新
-    │       ├── quota.rs    # wham/usage 配额、重置卡（只读）、本地时间格式化
-    │       ├── doctor.rs   # 离线自检
-    │       ├── login.rs    # 登录+入库+切换组合动作
-    │       ├── process.rs  # Codex 进程检测
-    │       └── emit.rs     # 输出总线 + 线程级静默（TUI 用）
-    ├── cli/              # hangar（bin）：TUI + classic 共享 core
+├── Cargo.toml                    # [workspace]：hangar-core + cli
+├── crates/
+│   └── hangar-core/             # hangar-core（库）：业务层，UI 无关
+│       └── src/
+│           ├── account.rs       # 账号库 CRUD/harvest/切换/复活/删除、原子写+文件锁、JWT 工具
+│           ├── oauth.rs         # OAuth PKCE 登录、token 交换/刷新
+│           ├── quota.rs         # wham/usage 配额、重置卡（只读）、本地时间格式化
+│           ├── doctor.rs        # 离线自检
+│           ├── login.rs         # 登录+入库+切换组合动作
+│           ├── process.rs       # Codex 进程检测
+│           └── emit.rs          # 输出总线 + 线程级静默（TUI 用）
+└── apps/
+    └── cli/                     # hangar（bin）：TUI + classic 共享 core
         └── src/
-            ├── main.rs     # 入口：TUI / classic 分发
-            ├── tui.rs      # 全屏 TUI（ratatui）
-            ├── classic.rs  # 经典菜单（非 TTY / --classic 回退）
-            └── ui.rs       # ANSI 样式（经典模式用）
-    └── gui/              # hangar-gui（bin）：egui 主窗口 + worker + 系统托盘
+            ├── main.rs          # 入口：TUI / classic 分发
+            ├── tui.rs           # 全屏 TUI（ratatui）
+            ├── classic.rs       # 经典菜单（非 TTY / --classic 回退）
+            └── ui.rs            # ANSI 样式（经典模式用）
 
 扩展方向：新增前端（守护进程/HTTP API）→ 新 crate 依赖 core 即可；
 支持其他 AI CLI → core 增加 provider 抽象。
@@ -83,12 +83,12 @@ hangar 是**按需运行的 CLI**（每次调用存活几秒），没有常驻�
 每次交互前（菜单循环每轮，而非仅进程启动时）:
     1. harvest : 官方 auth.json → 账号库（已知账号更新 / 未知账号收编，归属账号标为使用中，全程持锁）
     2. refresh : 目标账号 AT 过期 → 用最新 RT 静默刷新（失败则标 stale，401 细分 error_code）
-    3. project : merge 为官方 AuthDotJson 格式 → 原子覆盖官方 auth.json → 重置 config provider → macOS 同步 keychain
+    3. project : 预检官方凭据存储为 file → merge 为 AuthDotJson 格式 → 原子覆盖官方 auth.json → 重置 config provider
 ```
 
 ## 新功能（切换之外）
 
-- `u` 配额：逐账号查 `wham/usage`，当前产品只展示周剩余与重置时间；查前保证 AT 新鲜，401 则强制刷新重试一次，`stale` 账号跳过。TUI/classic 在全量查询完成后按周剩余给出稳定建议，但不自动切换
+- `u` 配额：手动操作逐账号实时查 `wham/usage`，查前保证 AT 新鲜，401 则强制刷新重试一次，`stale` 账号跳过。成功结果写共享 `quota-cache.json`；TUI/原生 GUI 启动先显示缓存，只自动查询 30 分钟到期的账号，失败保留标记为旧的值。推荐仅使用新鲜、成功、周剩余已知的结果，不自动切换；classic 保持基础兼容
 - `doctor` 自检：纯离线，覆盖账号库解析/备份/权限、逐账号凭据完整性与过期、`auth.json` 一致性、`config.toml` 冲突路由、残留锁
 
 ## 交互（TUI）
@@ -103,15 +103,15 @@ hangar 是**按需运行的 CLI**（每次调用存活几秒），没有常驻�
 ## 交互（GUI/托盘）
 
 - GUI 与 CLI 共用 `~/.hangar/accounts.json` 和 core 业务 API，不直接读写凭据文件
-- 添加账号仅入库；复活账号仍按既有语义原位更新并切回目标账号
+- 添加账号仅入库；重新登录账号只原位更新凭据，不改变当前账号。目标恰为当前账号时，按 S11 在账号库落盘后同步官方 `auth.json`
 - 托盘切号复用 GUI 的 current/stale/busy 守卫，切换结果经 worker 事件回主线程收敛
 - Linux 托盘菜单已真机验证；macOS/Windows 验收状态见 `v0.4.0-closure-plan.md`
 
 ## 安全声明（明文存储）
 
 - `~/.hangar/accounts.json` 与官方 `auth.json` 均为明文 token，靠目录 `700` + 文件 `600` 收紧；
-- 未做系统钥匙串加密（`Linux Secret Service / macOS keychain / Windows DPAPI` 为后续项），macOS 仅同步官方 keychain 快照；
-- macOS keychain 同步经 `security -w` 命令行传参，同机他用户 `ps` 可见，多用户共享机慎用；
+- 未做系统钥匙串加密（`Linux Secret Service / macOS keychain / Windows DPAPI` 为后续项）；当前只支持官方默认的 `cli_auth_credentials_store = "file"`；
+- 显式配置 `keyring` 或 `auto` 时，切换会在刷新和写入前失败，不会只改 `auth.json` 后误报成功；
 - 错误日志只记 `HTTP status + error_code + body_len`，不回显完整 body；上报 issue 前请脱敏 email/token。
 
 ## 已知接受的风险（论证后不修）

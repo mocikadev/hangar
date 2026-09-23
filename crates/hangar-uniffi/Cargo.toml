@@ -1,0 +1,22 @@
+[package]
+name = "hangar-uniffi"
+version = "0.1.0"
+edition = "2021"
+description = "UniFFI adapter for the native macOS Hangar app"
+
+[lib]
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[features]
+default = []
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+hangar-core = { path = "../hangar-core" }
+uniffi = { workspace = true }
+thiserror = { workspace = true }
+
+[[bin]]
+name = "uniffi-bindgen-swift"
+path = "src/bin/uniffi-bindgen-swift.rs"
+required-features = ["bindgen"]

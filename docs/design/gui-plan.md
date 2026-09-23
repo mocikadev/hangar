@@ -1,6 +1,6 @@
-# GUI（egui 第三前端）Implementation Plan
+# GUI（egui 第三前端）Implementation Plan（历史归档）
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 状态：已完成的历史计划，不得继续据此追加 egui 功能。原生替代计划见 [`native-gui-migration-plan.md`](native-gui-migration-plan.md)。
 
 **Goal:** 新增 `crates/gui`（egui），能力与 TUI 对等，对外打包名为 hangar。
 

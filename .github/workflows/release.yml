@@ -20,9 +20,9 @@ jobs:
       - name: Check tag matches CLI Cargo.toml version
         run: |
           TAG="${GITHUB_REF_NAME}"
-          CARGO_VERSION="v$(grep '^version' crates/cli/Cargo.toml | head -1 | cut -d'"' -f2)"
+          CARGO_VERSION="v$(grep '^version' apps/cli/Cargo.toml | head -1 | cut -d'"' -f2)"
           if [ "$TAG" != "$CARGO_VERSION" ]; then
-            echo "error: tag '$TAG' does not match crates/cli/Cargo.toml version '$CARGO_VERSION'"
+            echo "error: tag '$TAG' does not match apps/cli/Cargo.toml version '$CARGO_VERSION'"
             exit 1
           fi
           echo "OK: $TAG"

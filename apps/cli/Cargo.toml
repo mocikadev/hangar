@@ -1,0 +1,17 @@
+[package]
+name = "hangar"
+version = "0.7.0"
+edition = "2021"
+description = "Codex 多账号管理工具"
+
+[[bin]]
+name = "hangar"
+path = "src/main.rs"
+
+[dependencies]
+hangar-core = { path = "../../crates/hangar-core" }
+ratatui = "0.30"
+crossterm = "0.29"
+clap = { version = "4.5", features = ["derive"] }
+serde_json = { workspace = true }
+dirs = { workspace = true }

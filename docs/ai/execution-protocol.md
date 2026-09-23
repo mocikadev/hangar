@@ -10,7 +10,7 @@
 |------|----------|----------|
 | 小改动 | 文案、注释、日志文案、无行为变化 | 直接修改 + `cargo test` |
 | 普通变更 | 单模块行为变化（如某个命令的守卫、一条展示行） | 澄清 + 简短方案 + 实现 + 测试 + 真机冒烟 |
-| 复杂变更 | 跨模块、OAuth 流程、存储格式、TUI/GUI 结构、新增前端 | spec 更新 + 计划 + 分批实现 + 回归 + 三前端验证 |
+| 复杂变更 | 跨模块、OAuth 流程、存储格式、TUI/GUI 结构、新增前端 | spec 更新 + 计划 + 分批实现 + 回归 + 受影响入口验证 |
 | 高风险变更 | 凭据存储格式、auth.json 投影逻辑、锁语义、删除流程 | 影响说明 + 用户确认 + 执行契约 + 验证证据 |
 
 **本项目特有升级条件**（满足任一即从"小改动"升级）：
@@ -36,7 +36,8 @@
 - **S11 顺序不可倒置**：刷新后先 `save_accounts_unlocked` 落库，再写官方 auth.json
 - **守卫完备性**：任何会写官方 auth.json 的操作必须先检查 `stale` + 空 AT + "使用中"拦截；新增写路径时逐条核对
 - **容错解析**：wham/usage 等非公开契约接口，字段缺失显示"未知"，不许 `unwrap` 崩溃
-- **UI 无关**：业务函数不得 `println!`，一律 `crate::emit::emit/emit_err`；v0.5 新能力同步评估一次性 CLI 与 TUI。classic 保留基础兼容，GUI 冻结为维护模式；共享 core 变化仍须做 GUI 回归
+- **UI 无关**：业务函数不得 `println!`，一律 `crate::emit::emit/emit_err`；一次性 CLI 与 TUI 同步评估。classic 保留基础兼容；egui 已删除，原生 GUI 不得复制 Core 业务规则
+- **宿主平台门禁**：平台原生 GUI 只能在匹配宿主 OS 上实现和真机验收。macOS 阶段只改 macOS UI；Linux 阶段必须切换到 Linux 主机再创建/修改 Linux UI。共享 Core、桥接、文档和 CI 可按依赖关系调整，但不得用跨平台编译或无头 runner 宣称桌面行为通过
 - **兼容老库**：`Account` 新字段必须 `#[serde(default)]`；不能假定 account_id/organization_id 存在
 - **时间展示**：统一走 `quota::fmt_ts_local`（本地时区具体日期时间），不引 chrono
 - **无头/管道安全**：`stdin` EOF 优雅退出；`stdout flush` 不 `unwrap`（EPIPE）
@@ -54,6 +55,7 @@ cargo test             # 全部单测（core + cli）
 ```
 
 - 涉及 TUI 的变更额外做终端冒烟；涉及 GUI/托盘的变更在对应平台做真机冒烟，并声明"验了什么/没验什么"
+- 原生 GUI 报告必须记录宿主 OS/版本/CPU 与 SDK/系统库；分别标注源码完成、编译通过、启动通过和交互通过。一个平台的结果不得外推到另一个平台或 CPU 架构
 - 一次性 CLI 的文件写入测试必须使用隔离 `HOME`/`CODEX_HOME`；JSON 输出测试必须断言不含 access/refresh/id token
 - 涉及真实凭据链路（登录/刷新/配额成功路径）无法离线验证时，明确请用户在真机操作并回报输出；不得用编造的 expires_at/token 宣称"测试通过"
 
@@ -69,6 +71,7 @@ cargo test             # 全部单测（core + cli）
 - 场景状态变化（❌→✅ 等）→ 同步 `docs/design/scenarios.md` 矩阵
 - 修改 `harvest_locked` 的收编/更新语义 → 必须保持"归属账号 = 使用中"不变量（`current_account_id` 与官方 auth.json 一致）
 - 架构/模块变化 → 同步 `docs/design/architecture.md`
+- 原生 GUI 目录、桥接、生命周期或平台范围变化 → 同步 `docs/design/native-gui-migration-plan.md`，并只勾选当前宿主真实完成的任务
 - 新增交互键位/守卫 → 同步 scenarios 的「交互（TUI）」小节
 
 ## 风险操作（需用户确认）

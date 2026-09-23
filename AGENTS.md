@@ -5,12 +5,13 @@
 ## 项目概览
 
 **hangar** — OpenAI Codex 多账号管理 CLI/TUI/GUI 工具：免重复登录地在多个 ChatGPT 账号间切换，官方 `auth.json` 为唯一权威，本工具负责缓存、收敛与投影。
-当前状态：**v0.7.0 CLI/TUI 已发布**（全账号周剩余总览与稳定推荐已落地；GUI 保持 0.6.0 维护通道）
+当前状态：**v0.7.0 CLI/TUI 已发布**（全账号周剩余总览与稳定推荐已落地）；egui GUI 源码已移除，已发布的 0.6.0 仅作为历史版本保留。下一阶段按 `docs/design/native-gui-migration-plan.md` 实现 macOS 原生 GUI。
 
 ## 技术栈
 
-- Rust 2021（Cargo workspace：`crates/hangar-core` 业务库 + `crates/cli` CLI/TUI + `crates/gui` egui GUI）
-- 前端：ratatui + crossterm（TUI）、eframe/egui（GUI）、tray-icon/ksni（托盘）；HTTP：ureq；本地回调：tiny_http
+- 当前：Rust 2021（Cargo workspace：`crates/hangar-core` 业务库 + `apps/cli` CLI/TUI）
+- 目标：增加 `crates/hangar-uniffi` + `apps/macos`（SwiftUI）；`apps/linux`（GTK4/Libadwaita）仅到 Linux 主机后创建；Windows 延后
+- 前端：ratatui + crossterm（TUI）；HTTP：ureq；本地回调：tiny_http
 - 无 chrono：时间格式化用 civil_from_days + libc `localtime_r`
 
 ## AI 执行协议摘要
@@ -26,6 +27,7 @@
 
 - 测试一律用隔离 `HOME`/`CODEX_HOME` 沙箱；**禁止在用户真实 HOME 跑写路径验证**
 - 不得用编造的数据（如假 expires_at/token）宣称"测试通过"；无法离线验证的链路明确请用户真机操作回报
+- **原生 GUI 宿主门禁**：当前机器只实现与宿主 OS 匹配的 GUI。macOS 只改 `apps/macos/**` 并真机构建/验收；Linux GUI 必须到 Linux 机器后按迁移文档实现。共享 Core/桥接/文档/CI 可在适用宿主修改，但不得在非目标系统生成平台 UI 后宣称支持
 - 除此之外无额外项目约束
 
 ## 提交前检查清单
@@ -33,7 +35,7 @@
 ```bash
 cargo fmt                                  # 1. 格式化（必须先于 clippy，否则 clippy 报格式错）
 cargo clippy -- -D warnings                # 2. lint 零警告
-cargo test                                 # 3. 全部单测（core + cli + gui）
+cargo test                                 # 3. 全部单测（core + cli）
 ```
 
 > ⚠️ 顺序不可颠倒：未 `cargo fmt` 先跑 `clippy -- -D warnings` 会因格式问题失败。
@@ -42,8 +44,8 @@ cargo test                                 # 3. 全部单测（core + cli + gui�
 
 - **S11 写入顺序**：切换/刷新后**先写账号库、后写官方 auth.json**；倒置会在崩溃时丢 RT 并误标 stale（`docs/design/scenarios.md` S11）
 - **OAuth 白名单**：`redirect_uri` 仅 `http://localhost:{1455,1457}/auth/callback`，改端口/路径/域名即登录失败
-- **跨文件同步**：改 `Account` 结构（`crates/core/src/account.rs`）→ 同步检查 TUI/classic/GUI 三前端引用与 `#[serde(default)]` 老库兼容；改场景状态 → 同步 `docs/design/scenarios.md`
-- **前端演进边界**：v0.5 起新能力只要求一次性 CLI 与 TUI 对等；classic 保留基础兼容，GUI 冻结为维护模式。共享 core 变更仍须运行 GUI 编译/测试回归
+- **跨文件同步**：改 `Account` 结构（`crates/hangar-core/src/account.rs`）→ 同步检查全部实际消费者与 `#[serde(default)]` 老库兼容；改场景状态 → 同步 `docs/design/scenarios.md`
+- **前端演进边界**：CLI/TUI 新能力继续对等；classic 保留基础兼容。egui GUI 已删除；原生 GUI 共享业务规则但按宿主平台分阶段实现和验收
 - **明文安全模型**：凭据明文存储，靠目录 700/文件 600；错误输出只记 `status+error_code+body_len`，禁止打印 token/body
 - **非公开契约**：wham/usage 等接口响应全容错解析，字段缺失显示"未知"，不许 panic
 
@@ -51,7 +53,7 @@ cargo test                                 # 3. 全部单测（core + cli + gui�
 
 ```bash
 cargo build --release   # 构建产物 target/release/hangar（~2.3MB）
-cargo test              # 单测（core + cli + gui）
+cargo test              # 单测（core + cli）
 ./target/release/hangar            # 默认 TUI
 ./target/release/hangar --classic  # 经典菜单（管道/非 TTY 自动回退）
 ```
@@ -70,6 +72,7 @@ cargo test              # 单测（core + cli + gui）
 | v0.5.0 CLI/TUI 计划 | `docs/design/v0.5.0-cli-tui-plan.md` |
 | v0.6.0 CLI/TUI 计划 | `docs/design/v0.6.0-cli-tui-plan.md` |
 | v0.7.0 周额度推荐计划 | `docs/design/v0.7.0-weekly-recommendation-plan.md` |
+| 原生 GUI 迁移计划（目录重构、macOS/Linux 分阶段） | `docs/design/native-gui-migration-plan.md` |
 | v0.5.0 发布说明 | `docs/releases/v0.5.0.md` |
 | v0.7.0 发布说明 | `docs/releases/v0.7.0.md` |
 

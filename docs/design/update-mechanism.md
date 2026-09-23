@@ -1,6 +1,6 @@
 # 版本发布与自升级机制设计（update-mechanism）
 
-> 状态：已实施并经 v0.3.0-v0.6.0 发版验证；后续 CLI 与 GUI 采用独立发布通道
+> 状态：CLI 机制已实施并经 v0.3.0-v0.7.0 发版验证；egui GUI 发布链已归档，原生 GUI 发布方式待迁移阶段确定
 > 对标：`mocika-skills-cli`（`skm`）的 CI 打包 + 自升级链路，按 hangar 约束裁剪
 > 远端：`git@github.com:mocikadev/hangar.git`
 
@@ -8,7 +8,7 @@
 
 hangar 当前无版本发布流程、无升级能力，用户只能本地 `cargo build`。目标是建立闭环：
 
-1. CLI 或 GUI 标签分别产出本轮 Linux/macOS 资产与各自的 `SHA256SUMS.txt`；Windows 产物延期；
+1. CLI 标签产出本轮 Linux/macOS 资产与 `SHA256SUMS.txt`；Windows CLI 产物延期；
 2. `hangar` 启动时自动检查升级（24h 缓存节流），有新版自动升完退出；
 3. TUI 命令面板 / classic 菜单各一个手动“检查更新”入口，行为对等；
 4. 离线/限流/失败时永远静默放行，不阻塞正常使用。
@@ -17,25 +17,23 @@ hangar 当前无版本发布流程、无升级能力，用户只能本地 `cargo
 
 ## 2. 版本规则（单一来源）
 
-- 二进制版本号 = `crates/cli/Cargo.toml` 的 `version`，代码内一律 `env!("CARGO_PKG_VERSION")` 获取，不手写版本号字符串。
+- 二进制版本号 = `apps/cli/Cargo.toml` 的 `version`，代码内一律 `env!("CARGO_PKG_VERSION")` 获取，不手写版本号字符串。
 - `hangar-core` 版本保持内部库版本，不参与发布比较。
 - Release tag 格式 `v{cli版本}`（如 `v0.3.0`），CI 的 `verify` job 强制 `tag == v$(cli Cargo.toml version)`，不一致直接失败。
-- CLI 发版步骤：改 `crates/cli/Cargo.toml` → commit → `git tag vX.Y.Z` → push（含 tag）→ CLI Release 自动生成并成为 GitHub `latest`。
-- GUI 独立使用 `gui-v{gui版本}`，同时校验 GUI Cargo 与 Tauri bundle 版本；GUI Release 显式 `make_latest: false`，不得影响 CLI 安装和自升级。
+- CLI 发版步骤：改 `apps/cli/Cargo.toml` → commit → `git tag vX.Y.Z` → push（含 tag）→ CLI Release 自动生成并成为 GitHub `latest`。
+- 历史 egui 使用过 `gui-v{gui版本}`；其工作流已删除。未来原生 GUI 的版本与发布入口在对应平台实现阶段定义，不沿用 Tauri bundle 契约。
 
 ## 3. CI / Release（照抄 skm，改名适配）
 
 工作流按现有 crate 与发布边界拆分：
 
 - `.github/workflows/ci.yml`：CLI/Core 路径触发，Linux/macOS/Windows 执行定向 clippy/test。
-- `.github/workflows/gui-ci.yml`：GUI/Core 路径触发，Linux/macOS/Windows 执行 GUI 定向 clippy/test；不再追加重复 build。
 - `.github/workflows/release.yml`：仅 `v*` tag 触发 → 校验 CLI 版本 → 本轮四个 target 构建：
   - `x86_64-unknown-linux-musl`（cross）→ `hangar-linux-amd64`
   - `aarch64-unknown-linux-musl`（cross）→ `hangar-linux-arm64`
   - `x86_64-apple-darwin` → `hangar-macos-amd64`
   - `aarch64-apple-darwin` → `hangar-macos-arm64`
   → `SHA256SUMS.txt` → `softprops/action-gh-release` 发 CLI Release 并标为 latest。
-- `.github/workflows/gui-release.yml`：仅 `gui-v*` tag 触发 → 校验 GUI/Tauri 版本 → Linux amd64/arm64 与 macOS amd64/arm64 安装包 → 独立校验文件 → 非 latest GUI Release。
 
 `install.sh` 继续服务 Linux/macOS。`install.ps1` 与 Windows target 映射保留供后续恢复发布，但 v0.5.0 的 latest Release 不包含 Windows 资产，README 不再引导用 latest 安装 Windows 版本。
 
@@ -81,7 +79,7 @@ pub fn last_check_secs() -> Option<u64>  // 读缓存，供 doctor 展示
 - http 客户端用 `ureq` 而非 `reqwest`：workspace 已有，不增依赖。
 - 不引入 `self-replace` crate：Windows 逻辑仅约 30 行且两端清理都是自家代码，可控；helper 子进程方案反而扩大审计面。
 
-## 5. 启动流程（`crates/cli/src/main.rs`）
+## 5. 启动流程（`apps/cli/src/main.rs`）
 
 ```
 解析 args（沿用现有手写风格新增 --version/--no-update/--check-update，不引入 clap）
@@ -97,14 +95,14 @@ pub fn last_check_secs() -> Option<u64>  // 读缓存，供 doctor 展示
 约束：检查与下载都不持账号锁；错误输出走纯文本 `eprintln`（main 层允许，业务层仍走 `emit`）；
 升级流程与 harvest/switch 无交叉，S11 顺序不受影响。
 
-## 6. 三前端对等
+## 6. 终端前端对等
 
 - TUI（`tui.rs`）：`Action` 新增 `Update`（命令面板“检查更新”，hint“检查并升级到最新版”）；
   后台线程执行 `check_update(true)+apply_update`，经 `Ev::UpdateDone{res}` 回主线程；
   `busy` spinner 复用现有；成功日志“✅ 已升级到 x.y.z，请重启 hangar 生效”，失败“✗ 更新失败：原因（旧版继续可用）”；不自动退出。
 - classic（`classic.rs`）：新增 `update` 命令同语义（`u` 已被配额占用，用全字 `update`）。
 - doctor（`doctor.rs`）：加两行——当前版本（`env!`）、上次检查时间（`last_check_secs` 经 `fmt_ts_local`，无缓存显示“尚未检查”）。
-- GUI：只检查版本并引导下载对应安装包，不在运行中直接替换已安装应用。
+- 原生 GUI 更新策略待平台应用实现时确定，不复用 CLI 运行中替换二进制的流程。
 
 ## 7. 安全声明
 

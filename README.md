@@ -1,6 +1,6 @@
 # hangar
 
-> **Codex 多账号管理工具**：免重复登录，秒级切换，CLI/TUI/GUI 三种界面。
+> **Codex 多账号管理工具**：免重复登录，秒级切换，提供 CLI/TUI；平台原生 GUI 正在迁移。
 
 在多个 ChatGPT 账号之间换来换去，每次都要重新走一遍浏览器登录？hangar 把登录态缓存到本地，切换账号秒级生效，令牌被官方轮换后自动同步回来。
 
@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | 
 
 ### 桌面版（GUI）
 
-在 [Releases](https://github.com/mocikadev/hangar/releases) 页按平台下载安装包（v0.6.0 提供 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`；Windows GUI 资产延期）。后续 GUI 安装包使用独立的 `gui-vX.Y.Z` 发布标签，不随每个 CLI 版本重复打包；GUI 继续维护现有账号、配额与托盘能力。
+已发布的 egui GUI v0.6.0 仍可在 [Releases](https://github.com/mocikadev/hangar/releases) 下载 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`，但该实现已停止维护。主干正在迁移到平台原生 GUI：先实现 macOS SwiftUI，Linux GTK4/Libadwaita 将在 Linux 主机上另行实现。
 
 ### 更新
 
@@ -47,10 +47,10 @@ curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | 
 | 失效账号一切换就污染正常登录态 | 失效账号自动标记并拒绝切换，可一键重新登录复活 |
 | 切换后 Codex 没生效 | 自动检测 Codex 是否在运行并提示重启 |
 
-- **配额仪表盘**：启动后后台加载全部正常账号的周剩余、具体重置时间（本地时区）与重置卡数量，并标记建议账号。
+- **配额仪表盘**：TUI 启动即显示上次成功的周剩余、刷新时间与旧数据提示；30 分钟内不重复自动请求，到期后台刷新，手动可强制刷新。建议只使用新鲜数据，不自动切号。macOS 原生 GUI 同步使用这份快照，并在菜单栏显示每个账号的周剩余。
 - **自检**：一键检查账号状态、文件权限、官方登录一致性。
-- **三种界面**：默认全屏 TUI；管道/无终端环境自动回退经典菜单（`--classic` 可强制）；桌面版提供 GUI 与系统托盘。
-- **托盘切换**：GUI 关闭主窗口后可驻留系统托盘，从账号菜单快速切换并重新显示窗口。
+- **两种终端界面**：默认全屏 TUI；管道/无终端环境自动回退经典菜单（`--classic` 可强制）。
+- **原生桌面版（规划中）**：账号卡片仪表盘、系统菜单栏/状态图标和快捷切换；旧 egui v0.6.0 仅作历史版本保留。
 
 ## 使用
 
@@ -110,17 +110,19 @@ hangar update
 | 平台 | 状态 | 说明 |
 |------|------|------|
 | Linux x86_64 / ARM64 | ✅ | 全功能 |
-| macOS Intel / Apple 芯片 | ✅ | 含钥匙串快照同步；GUI 沿用已验证的托盘/Dock 行为 |
-| Windows x86_64 | ⏸ | CLI/GUI 代码保留并由 CI 检查；当前不发布 Windows 资产 |
+| macOS Intel / Apple 芯片 | ✅ | CLI/TUI 使用官方默认 file 凭据存储；原生 GUI 正在迁移 |
+| Windows x86_64 | ⏸ | CLI 源码由 CI 检查；当前不发布 Windows 资产，GUI 不在范围 |
 
 ## 安全提示
 
 账号凭据明文存于本机 `~/.hangar/`（靠系统文件权限保护，仅自己可读写），与官方 Codex 客户端一致。多用户共用的机器请谨慎使用；上报问题前请隐去邮箱和令牌。
 
+配额快照另存于同目录的 `quota-cache.json`，不含令牌，文件权限为 `600`。自动检查只在 TUI 或原生 GUI 运行期间进行；不会额外启动常驻服务，也不会定时刷新 refresh token。
+
 ## 常见问题
 
-**Q：为什么 GUI 里没有 CLI 已添加的账号？**
-正常安装的 GUI 与 CLI 都读取 `~/.hangar/accounts.json`，不会各存一份；`CODEX_HOME` 只决定官方 Codex 的 `auth.json` 目录。如果是开发或测试启动，请检查是否给 GUI 设置了不同的 `HOME`。GUI 的「自检」会显示实际账号库和 Codex 目录，便于核对。
+**Q：旧 GUI 为什么不再更新？**
+egui GUI v0.6.0 已停止维护，主干正在迁移到平台原生实现。旧 GUI 与 CLI 仍读取同一个 `~/.hangar/accounts.json`；新原生 GUI 也必须保持这一数据路径契约。
 
 **Q：macOS 提示无法验证开发者或阻止首次打开？**
 当前 DMG 使用 ad-hoc 签名但尚未 Apple 公证。若系统阻止首次启动，请在“系统设置 → 隐私与安全性”中确认打开；正式 Developer ID 签名与公证完成前，不应把安装包描述为已通过 Gatekeeper。

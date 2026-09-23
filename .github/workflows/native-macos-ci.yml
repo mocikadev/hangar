@@ -1,0 +1,86 @@
+name: CI · macOS Native GUI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'crates/hangar-core/**'
+      - 'crates/hangar-uniffi/**'
+      - 'apps/macos/**'
+      - 'scripts/generate-swift-bindings.sh'
+      - '.github/workflows/native-macos-ci.yml'
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'crates/hangar-core/**'
+      - 'crates/hangar-uniffi/**'
+      - 'apps/macos/**'
+      - 'scripts/generate-swift-bindings.sh'
+      - '.github/workflows/native-macos-ci.yml'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos-native:
+    name: Core / UniFFI / SwiftUI · macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Record host toolchain
+        run: |
+          sw_vers
+          uname -m
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          rustc -vV
+
+      - name: Format, lint, and isolated Rust tests
+        run: |
+          set -eu
+          cargo fmt --check
+          cargo clippy --locked -p hangar-core -p hangar-uniffi --all-targets -- -D warnings
+          original_home="$HOME"
+          export RUSTUP_HOME="${RUSTUP_HOME:-$original_home/.rustup}"
+          export CARGO_HOME="${CARGO_HOME:-$original_home/.cargo}"
+          qa_home="$(mktemp -d)"
+          trap 'find "$qa_home" -depth -delete' EXIT
+          HOME="$qa_home" CODEX_HOME="$qa_home/.codex" \
+            cargo test --locked -p hangar-core -p hangar-uniffi
+
+      - name: Swift display-order test
+        run: |
+          swiftc -o "$RUNNER_TEMP/account-display-order-tests" \
+            apps/macos/Tests/AccountDisplayOrderTests.swift \
+            apps/macos/HangarMac/AccountDisplayOrder.swift
+          "$RUNNER_TEMP/account-display-order-tests"
+
+      - name: Build native App (Debug and Release)
+        run: |
+          set -eu
+          for config in Debug Release; do
+            xcodebuild -project apps/macos/HangarMac.xcodeproj \
+              -scheme HangarMac -configuration "$config" \
+              -destination "platform=macOS,arch=$(uname -m)" \
+              -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO build
+            app="build/xcode/Build/Products/$config/Hangar.app"
+            plist="$app/Contents/Info.plist"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = 'dev.mocika.hangar'
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" = '0.7.0'
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" = '1.7.0'
+            test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" = '14.0'
+            test "$(lipo -archs "$app/Contents/MacOS/Hangar")" = "$(uname -m)"
+          done
