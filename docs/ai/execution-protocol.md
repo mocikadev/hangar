@@ -37,7 +37,7 @@
 - **守卫完备性**：任何会写官方 auth.json 的操作必须先检查 `stale` + 空 AT + "使用中"拦截；新增写路径时逐条核对
 - **容错解析**：wham/usage 等非公开契约接口，字段缺失显示"未知"，不许 `unwrap` 崩溃
 - **UI 无关**：业务函数不得 `println!`，一律 `crate::emit::emit/emit_err`；一次性 CLI 与 TUI 同步评估。classic 保留基础兼容；egui 已删除，原生 GUI 不得复制 Core 业务规则
-- **宿主平台门禁**：平台原生 GUI 只能在匹配宿主 OS 上实现和真机验收。macOS 阶段只改 macOS UI；Linux 阶段必须切换到 Linux 主机再创建/修改 Linux UI。共享 Core、桥接、文档和 CI 可按依赖关系调整，但不得用跨平台编译或无头 runner 宣称桌面行为通过
+- **宿主平台门禁**：平台原生 GUI 只能在匹配宿主 OS 上实现和真机验收。macOS 阶段只改 macOS UI；Linux 阶段必须切换到 Linux 主机，先读 `docs/design/linux-native-gui-handoff.md`，再从 N28 开始创建/修改 Linux UI。共享 Core、桥接、文档和 CI 可按依赖关系调整，但不得用跨平台编译或无头 runner 宣称桌面行为通过
 - **兼容老库**：`Account` 新字段必须 `#[serde(default)]`；不能假定 account_id/organization_id 存在
 - **时间展示**：统一走 `quota::fmt_ts_local`（本地时区具体日期时间），不引 chrono
 - **无头/管道安全**：`stdin` EOF 优雅退出；`stdout flush` 不 `unwrap`（EPIPE）

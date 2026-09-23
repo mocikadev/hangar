@@ -5,12 +5,12 @@
 ## 项目概览
 
 **hangar** — OpenAI Codex 多账号管理 CLI/TUI/GUI 工具：免重复登录地在多个 ChatGPT 账号间切换，官方 `auth.json` 为唯一权威，本工具负责缓存、收敛与投影。
-当前状态：**v0.7.0 CLI/TUI 已发布**（全账号周剩余总览与稳定推荐已落地）；egui GUI 源码已移除，已发布的 0.6.0 仅作为历史版本保留。下一阶段按 `docs/design/native-gui-migration-plan.md` 实现 macOS 原生 GUI。
+当前状态：**v0.7.0 CLI/TUI 已发布**；egui GUI 源码已移除，已发布的 0.6.0 仅作历史版本保留。macOS 原生 GUI 已完成本机 Release 配置的只读隔离冒烟，尚未签名公证或发布；**Linux 原生 GUI 尚未实现**，下一阶段必须到 Linux 主机从 N28 开始。
 
 ## 技术栈
 
-- 当前：Rust 2021（Cargo workspace：`crates/hangar-core` 业务库 + `apps/cli` CLI/TUI）
-- 目标：增加 `crates/hangar-uniffi` + `apps/macos`（SwiftUI）；`apps/linux`（GTK4/Libadwaita）仅到 Linux 主机后创建；Windows 延后
+- 当前：Rust 2021（Cargo workspace：`crates/hangar-core` + `crates/hangar-uniffi` + `apps/cli`）与 `apps/macos` SwiftUI/Xcode 工程
+- 待实现：`apps/linux`（Rust + GTK4/Libadwaita，直接依赖 Core）仅到 Linux 主机后创建；Windows 延后
 - 前端：ratatui + crossterm（TUI）；HTTP：ureq；本地回调：tiny_http
 - 无 chrono：时间格式化用 civil_from_days + libc `localtime_r`
 
@@ -29,6 +29,7 @@
 - macOS 隔离 GUI 验证若使用桌面自动化，禁止在绑定失效后调用可能重新启动应用的 `getApp`；新进程可能丢失隔离环境并访问真实账号。绑定失效即停止，不以重绑方式继续测试
 - 不得用编造的数据（如假 expires_at/token）宣称"测试通过"；无法离线验证的链路明确请用户真机操作回报
 - **原生 GUI 宿主门禁**：当前机器只实现与宿主 OS 匹配的 GUI。macOS 只改 `apps/macos/**` 并真机构建/验收；Linux GUI 必须到 Linux 机器后按迁移文档实现。共享 Core/桥接/文档/CI 可在适用宿主修改，但不得在非目标系统生成平台 UI 后宣称支持
+- **Linux 接手入口**：在 Linux 主机开始 GUI 工作前先读 `docs/design/linux-native-gui-handoff.md`，再按 `docs/design/native-gui-migration-plan.md` 的 N28–N33 逐项实施；macOS 验收不得勾选 Linux 项
 - 除此之外无额外项目约束
 
 ## 提交前检查清单
@@ -74,6 +75,7 @@ cargo test              # 单测（core + cli）
 | v0.6.0 CLI/TUI 计划 | `docs/design/v0.6.0-cli-tui-plan.md` |
 | v0.7.0 周额度推荐计划 | `docs/design/v0.7.0-weekly-recommendation-plan.md` |
 | 原生 GUI 迁移计划（目录重构、macOS/Linux 分阶段） | `docs/design/native-gui-migration-plan.md` |
+| Linux 原生 GUI 接手说明（未实现，从 N28 开始） | `docs/design/linux-native-gui-handoff.md` |
 | v0.5.0 发布说明 | `docs/releases/v0.5.0.md` |
 | v0.7.0 发布说明 | `docs/releases/v0.7.0.md` |
 

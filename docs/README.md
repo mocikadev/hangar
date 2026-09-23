@@ -10,6 +10,8 @@
 4. [test-strategy.md](quality/test-strategy.md) — 测试策略与验收清单
 5. [execution-protocol.md](ai/execution-protocol.md) — AI 协作执行协议（人类可跳过）
 
+在 Linux 主机接手原生 GUI 时，先读根目录 `AGENTS.md` 与 [Linux 原生 GUI 接手说明](design/linux-native-gui-handoff.md)，再按迁移计划 N28–N33 执行；当前 Linux 原生 GUI **尚未实现**。
+
 ## 按目录
 
 ### 需求（requirements）
@@ -24,6 +26,7 @@
 |------|------|
 | [architecture.md](design/architecture.md) | 分层架构、模块边界、harvest/切换/原子写/锁/OAuth 等关键机制 |
 | [native-gui-migration-plan.md](design/native-gui-migration-plan.md) | 原生 GUI 目标架构、账号仪表盘、目录重构、宿主平台门禁与 macOS/Linux 分阶段任务 |
+| [linux-native-gui-handoff.md](design/linux-native-gui-handoff.md) | Linux 主机接手顺序、当前未实现状态、N28–N33 执行/验收边界 |
 | [scenarios.md](design/scenarios.md) | S1-S13 令牌一致性场景、风险与方案、安全声明 |
 | [v0.4.0-closure-plan.md](design/v0.4.0-closure-plan.md) | v0.4.0 收口任务、平台验收与发布记录（历史归档） |
 | [v0.5.0-cli-tui-plan.md](design/v0.5.0-cli-tui-plan.md) | v0.5.0 一次性 CLI、TUI 演进任务与验收跟踪 |

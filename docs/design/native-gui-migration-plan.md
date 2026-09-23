@@ -1,6 +1,6 @@
 # 原生 GUI 迁移计划
 
-> 状态：Phase 3/4 进行中；N16–N21 已完成，N22 按缩减范围收口，N24 版本与安装身份已确定（2026-09-23）
+> 状态：macOS 本机 N16–N25 已完成（N22 按缩减范围收口）；N26/N27 未完成、原生 GUI 未发布。Linux N28–N33 均未开始；到 Linux 主机后先读 [Linux 接手说明](linux-native-gui-handoff.md)（2026-09-23）
 > 当前开发宿主：macOS 27.0 / Apple Silicon（arm64），Xcode 27.0，Swift 6.4
 > 目标：停止演进 egui 前端，以 Rust 共享核心分别承载 macOS SwiftUI 与 Linux GTK4/Libadwaita 原生应用。
 
@@ -146,7 +146,7 @@ poll_result / typed completion
 
 ## 5. Linux 阶段交接契约
 
-Linux 阶段只在 Linux 主机开始，先读取本文已定共享语义，再根据 GTK4/Libadwaita 原生模式实现：
+Linux 阶段**尚未实现**，只在 Linux 主机开始。接手 AI 先读 [Linux 原生 GUI 接手说明](linux-native-gui-handoff.md)完成 N28 环境基线，再按本文共享语义与 N29–N33 实现 GTK4/Libadwaita 原生应用；不能把 macOS 已完成项迁移为 Linux 已完成项。
 
 ### 5.1 跨端行为基线
 
@@ -207,7 +207,7 @@ Linux 阶段只在 Linux 主机开始，先读取本文已定共享语义，再�
 - [x] N20 完成 MenuBarExtra、关闭窗口、隐藏/恢复 Dock、显示窗口和真正退出
 - [x] N21 完成添加/重新登录 OAuth、删除、自检与错误恢复
 - [x] N22 完成键盘导航、深浅色、高对比、窄窗口及模拟唤醒验收；VoiceOver 听读与真实休眠唤醒按用户决定跳过，明确列为未验证例外
-- [ ] N23 在 macOS arm64 构建 Release 候选并用真实隔离配置副本冒烟；x64 保持未验证，直到真实环境补证
+- [x] N23 在 macOS arm64 构建 Release 配置并用真实隔离配置副本完成只读冒烟；这不是已签名、公证或打包的发行候选，x64 保持未验证，直到真实环境补证
 
 ### Phase 4：macOS 切换与发行
 
@@ -215,6 +215,8 @@ Linux 阶段只在 Linux 主机开始，先读取本文已定共享语义，再�
 - [x] N25 配置 macOS 专属 CI：Core/绑定/App 编译测试；GitHub Actions 首次运行通过
 - [ ] N26 完成签名、公证、DMG、最终 SHA/产物清单与回退说明
 - [ ] N27 真机确认 7～8 个真实账号总览、刷新、推荐、切换、重登、菜单栏和 Dock 生命周期
+
+N26 在本轮只做前置审计，不发布：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥匙串仅有 Apple Development 身份，没有 Developer ID Application；当前本地 App 为 ad-hoc 签名，严格 `codesign` 校验通过而 Gatekeeper 拒绝。待具备实际发行身份并准备发布时，按 [Apple 的 DMG 分发流程](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution)完成“Developer ID 签名 App → 组装并签名 DMG → 对最终 DMG 公证及装订 → 从 DMG 安装复验/Gatekeeper 检查 → 最终 SHA/资产清单 → 旧 0.6.0 回退演练”；不能将开发证书或本地 ad-hoc 签名记为 N26 完成，也不预先创建标签、DMG 或 Release。
 
 ### Phase 5：Linux 原生应用（切换到 Linux 主机后执行）
 
@@ -284,7 +286,10 @@ Linux 阶段只在 Linux 主机开始，先读取本文已定共享语义，再�
 - 2026-09-23 白框定位与修正：对照 `NSRunningApplication.icon` 可见旧蓝图标同样被系统套浅色边框，黑底时对比更明显。将 SVG 改为不透明满幅黑底后白框仍在，且方角暴露，因此恢复圆角源图。用户确认将包内 `.icns` 直接赋给 `NSApp.applicationIconImage` 的隔离试验版不再显示白框；但该 `.icns` 经 AppKit 只提供到 256px，可能重新引入模糊。最终改为由同一 1024px 母图生成独立 `HangarDockIcon` 图像资产并在启动时赋给 Dock；独立 Bundle ID/隔离 HOME 的试验 App 由用户目视反馈“还可以”。正式 Bundle ID `dev.mocika.hangar` 的 Debug App 也构建成功，`Assets.car` 回读到 1024×1024 Dock 图像；源图与 Dock 图 SHA-256 一致。此变化仅影响运行时 Dock，不声称 Finder 等系统图标无白框。
 - 同次 QA 的隔离启动最初显示空账号，但桌面自动化重新绑定时意外启动未继承隔离环境的 Debug App，短暂触及真实账号并更新 `quota-cache.json`；未执行切换/登录。发现后立即终止进程；真实 `accounts.json` 与其 `.bak` 字节相同，官方 `auth.json` 修改时间未变。不得将本轮称为全程隔离；后续绑定失效必须停止，不得自动重启 App。
 - 2026-09-23 图标修复提交 `149d904` 已推送，[macOS 原生 CI](https://github.com/mocikadev/hangar/actions/runs/35843735583) 全绿：隔离 Rust 测试、Swift 排序测试及 Debug/Release App 编译均成功。本机隔离 HOME/CODEX_HOME 下重新执行 `cargo fmt → cargo clippy -- -D warnings → cargo test`，90 项测试通过；独立 Swift 排序测试通过。
-- N23 部分进度：macOS 27.0 arm64 / Xcode 27.0 的 Release App 构建成功，包内 Bundle ID `dev.mocika.hangar`、版本 `0.7.0`/`1.7.0`、最低系统声明 14.0、Mach-O arm64；本地 ad-hoc 签名后 `codesign --verify --deep --strict` 通过，但 `spctl` 拒绝，未做 Developer ID 签名或公证。Release 不接受 Debug 专用的 `HANGAR_TEST_HOME` 与测试 OAuth/usage 端点；为避免隔离副本中的真实 RT 被服务端轮换，仅在禁止网络、禁止读取真实账号目录与写入真实 HOME 的 `sandbox-exec` 进程内运行 Release 可执行文件。隔离副本含 6 个真实账号、官方认证与配额缓存；进程环境指向临时 HOME/CODEX_HOME，主窗口在屏幕上，隔离账号库、认证文件与缓存和源文件字节相同。结束后已终止进程并删除临时凭据副本，真实源文件未改。该直接执行方式不等于通过 LaunchServices 启动完整 `.app`，Dock/菜单栏和卡片内容仍待该轮目视确认；原生 GUI 发布流水线、最终资产清单、x64/macOS 14 真机均未完成，N23 保持开放，不称可发布候选。
+- N23 部分进度：macOS 27.0 arm64 / Xcode 27.0 的 Release App 构建成功，包内 Bundle ID `dev.mocika.hangar`、版本 `0.7.0`/`1.7.0`、最低系统声明 14.0、Mach-O arm64；本地 ad-hoc 签名后 `codesign --verify --deep --strict` 通过，但 `spctl` 拒绝，未做 Developer ID 签名或公证。Release 不接受 Debug 专用的 `HANGAR_TEST_HOME` 与测试 OAuth/usage 端点；为避免隔离副本中的真实 RT 被服务端轮换，仅在禁止网络、禁止读取真实账号目录与写入真实 HOME 的 `sandbox-exec` 进程内运行 Release 可执行文件。隔离副本含 6 个真实账号、官方认证与配额缓存；进程环境指向临时 HOME/CODEX_HOME，隔离账号库、认证文件与缓存和源文件字节相同。系统窗口枚举曾返回 `onscreen=1`，但用户明确反馈没有看到窗口，因此不能据此认定 Release 主窗口或卡片通过可视验收。结束后已终止进程并删除临时凭据副本，真实源文件未改。该直接执行方式不等于通过 LaunchServices 启动完整 `.app`；Dock/菜单栏和卡片内容仍待目视确认。原生 GUI 发布流水线、最终资产清单、x64/macOS 14 真机均未完成，N23 保持开放，不称可发布候选。
+- 随后用 `open -n -F` 经 LaunchServices 启动同一 Release `.app`，`HOME`/`CODEX_HOME` 均为全新的空隔离目录，未放入账号、官方认证或配额缓存。进程环境已回读；macOS 报告前台应用为 Hangar，辅助功能接口报告一个标题为“账号总览”、位置 (221, 70)、尺寸 1180×760 的窗口；用户目视确认能看到空账号窗口。此检查只覆盖无凭据启动与窗口显示，六张卡片、缓存周剩余和推荐均未在这轮验证。
+- 再用进程级 `sandbox-exec` 直接启动同一 Release 可执行文件：先在空隔离目录下确认用户能看见窗口；同一策略的 TCP 探针返回 `Operation not permitted`，对真实 `~/.hangar/accounts.json` 的读取探针也被拒绝。随后仅将真实 `accounts.json`、`quota-cache.json` 和官方 `auth.json` 复制到权限 700/600 的临时 HOME/CODEX_HOME，阻网启动；进程环境回读到该临时目录，辅助功能接口报告 1 个“使用中”、5 个“切换到此账号”和 5 处周剩余缓存，用户目视确认 6 张卡片与缓存周剩余可见。用户补充确认有 1 个账号未取到额度、没有推荐标记；缓存已约 59 分钟，超过 30 分钟新鲜度阈值，Core 按设计不应基于旧值给出推荐。这一轮未点击切换、登录或手动刷新，隔离副本的账号库、认证和配额缓存最终仍与源文件字节相同；进程已结束，临时凭据副本已删除。N23 所指本机 Release 配置只读冒烟完成；此检查不能代替 LaunchServices 的完整 `.app` Dock/菜单栏验收，N26/N27 仍开放。
+- N23 收口门禁：在全新隔离 HOME/CODEX_HOME 下依次执行 `cargo fmt`、`cargo clippy -- -D warnings`、`cargo test`，90 项测试通过；仅文档有未提交改动，Release 二进制 SHA-256 为 `165c47e45ff522d2c1d76b08e3d32ee610a3fe00d54c319cc647fbc4804d5ed4`。N26 前置审计发现当前钥匙串有 2 个 Apple Development 身份、0 个 Developer ID Application；本地包仍是 ad-hoc 签名，`codesign --verify --deep --strict` 通过、`spctl --assess --type execute` 拒绝。N26 不因工具可用或本地构建通过而关闭。
 
 ## 8. 完成定义
 

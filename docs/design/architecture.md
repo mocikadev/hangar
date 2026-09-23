@@ -2,7 +2,7 @@
 
 > 架构、模块边界与关键机制。场景级风险矩阵见 `scenarios.md`。
 
-> 当前源码已完成原生迁移 Phase 1–2，并已建立 macOS SwiftUI 宿主骨架；egui 已删除。原生目标架构和平台实施门禁见 [`native-gui-migration-plan.md`](native-gui-migration-plan.md)。
+> 当前源码已完成原生迁移 Phase 1–2 与 macOS SwiftUI 本机实现；macOS GUI 尚未发布，Linux GTK4/Libadwaita GUI 尚未实现，egui 已删除。原生目标架构见 [`native-gui-migration-plan.md`](native-gui-migration-plan.md)，Linux 主机工作从 [接手说明](linux-native-gui-handoff.md) 开始。
 
 ## 分层架构
 

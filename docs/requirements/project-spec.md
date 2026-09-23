@@ -2,7 +2,7 @@
 
 > Codex 多账号切换 CLI/TUI/GUI 工具。本文档是需求与验收的唯一权威入口。
 >
-> 当前状态：v0.7.0 CLI/TUI 已发布；egui GUI 源码已移除，已发布的 0.6.0 作为历史版本保留，后续由平台原生 GUI 替代。
+> 当前状态：v0.7.0 CLI/TUI 已发布；egui GUI 源码已移除，已发布的 0.6.0 作为历史版本保留。macOS 原生 GUI 已完成本机 Release 配置只读冒烟但尚未发布；Linux 原生 GUI 尚未实现，接手入口见 [Linux 原生 GUI 接手说明](../design/linux-native-gui-handoff.md)。
 
 ## 目标
 

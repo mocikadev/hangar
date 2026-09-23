@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | 
 
 ### 桌面版（GUI）
 
-已发布的 egui GUI v0.6.0 仍可在 [Releases](https://github.com/mocikadev/hangar/releases) 下载 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`，但该实现已停止维护。主干正在迁移到平台原生 GUI：先实现 macOS SwiftUI，Linux GTK4/Libadwaita 将在 Linux 主机上另行实现。
+已发布的 egui GUI v0.6.0 仍可在 [Releases](https://github.com/mocikadev/hangar/releases) 下载 Linux `.deb` / `.rpm` / `.AppImage` 与 macOS `.dmg`，但该实现已停止维护。主干的 macOS SwiftUI 原生 GUI 已实现主要功能并完成本机只读隔离冒烟，尚未发布；Linux GTK4/Libadwaita 原生 GUI **尚未实现**，将在 Linux 主机按[接手说明](docs/design/linux-native-gui-handoff.md)开发和验收。
 
 ### 更新
 
@@ -50,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/mocikadev/hangar/main/install.sh | 
 - **配额仪表盘**：TUI 启动即显示上次成功的周剩余、刷新时间与旧数据提示；30 分钟内不重复自动请求，到期后台刷新，手动可强制刷新。建议只使用新鲜数据，不自动切号。macOS 原生 GUI 同步使用这份快照，并在菜单栏显示每个账号的周剩余。
 - **自检**：一键检查账号状态、文件权限、官方登录一致性。
 - **两种终端界面**：默认全屏 TUI；管道/无终端环境自动回退经典菜单（`--classic` 可强制）。
-- **原生桌面版（规划中）**：账号卡片仪表盘、系统菜单栏/状态图标和快捷切换；旧 egui v0.6.0 仅作历史版本保留。
+- **原生桌面版（开发中，未发布）**：macOS 已实现账号卡片仪表盘与菜单栏；Linux 原生版待在 Linux 主机实现。旧 egui v0.6.0 仅作历史版本保留。
 
 ## 使用
 

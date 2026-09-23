@@ -20,7 +20,7 @@
 | 自升级 | 用已安装旧版在隔离 HOME/CODEX_HOME 执行正式 Release 升级，核对线上 SHA、原地替换、重复执行与真实配置不变 | 人工/发布后 |
 | 真实凭据链路 | 用户真机操作回报输出（登录/刷新/配额成功路径不可离线模拟） | 用户协同 |
 | macOS 原生 GUI | macOS 主机构建/启动，Swift→UniFFI→Core 调用，SwiftUI、菜单栏与 Dock 交互验收 | macOS 真机 |
-| Linux 原生 GUI | Linux 主机构建/启动，GTK→Core 调用，真实桌面会话、Wayland/X11 与状态图标验收 | Linux 真机 |
+| Linux 原生 GUI（尚未实现） | 按[接手说明](../design/linux-native-gui-handoff.md)在 Linux 主机构建/启动，GTK→Core 调用，真实桌面会话、Wayland/X11 与状态图标验收 | Linux 真机 |
 
 ## 已知约束（写测试时必读）
 
@@ -43,7 +43,7 @@ xcodebuild -project apps/macos/HangarMac.xcodeproj \
 - 只读 UI 验收（例如排序、键盘焦点）不得点击会切换账号、删除账号或启动 OAuth 的控件来探测焦点；自动化操作前先获取当前无障碍树并核对控件完整标签，窗口/菜单变化后重新取元素编号。即使使用隔离副本，也遵守“不要切换”等当次操作约束。
 - 配额缓存验收需核对重启立即显示旧值、30 分钟内不重复自动请求、失败保留旧值并退出推荐、手动强制刷新；菜单栏每账号周剩余与主窗口快照一致。没有真实账号回报时仅可标记构建/单测/隔离空配置冒烟通过，不可声称真实配额链路通过。
 - Xcode Debug 配置必须链接 Rust debug 静态库，使仅 debug 生效的 `HANGAR_TEST_HOME` 能真正隔离账号库；Release 配置仍链接 release 静态库，不提供测试路径覆盖。
-- Release 的测试 OAuth/usage 端点覆盖也会被编译移除；用真实凭据隔离副本冒烟时，仅隔离 HOME 不足以防止服务端轮换 RT。必须先阻断该进程网络并验证隔离路径，或只做无凭据启动；直接运行包内二进制可验证部分 Release 数据链路，但不能代替 LaunchServices 的 Dock/菜单栏验收。
+- Release 的测试 OAuth/usage 端点覆盖也会被编译移除；用真实凭据隔离副本冒烟时，仅隔离 HOME 不足以防止服务端轮换 RT。必须先阻断该进程网络并验证隔离路径，或只做无凭据启动；直接运行包内二进制可验证部分 Release 数据链路，但不能代替 LaunchServices 的 Dock/菜单栏验收。系统窗口枚举结果（包括 `onscreen=1`）也不能代替用户实际看到窗口和内容的可视验收。旧缓存可继续显示周剩余，但超过 30 分钟新鲜度后不能据此产生推荐；阻网测试须分别记录缓存展示和推荐状态。
 - 本机可运行 `scripts/run-macos-qa.sh`：脚本复制真实账号库到临时测试目录，通过 `open --env` 和 LaunchServices 从完整 `.app` 启动 Debug 应用，确保数据隔离且 AppIcon/Asset Catalog 正常加载，同时不污染用户级 launchd 环境；退出后自动清理。
 - 使用桌面自动化观察隔离 App 时，绑定失效不得用会自动 launch 的 `getApp` 重绑：它可能启动同 Bundle ID 的新进程且不继承 `open --env` 的隔离变量。立即停止该轮测试，核对进程与真实文件修改时间，再选择不会重新启动 App 的观察方式；单靠最初看到橙色隔离横幅不足以证明后续进程仍隔离。
 4. **无网络依赖**：单测不打真实接口；wham 解析用内置 JSON 样本。仅 debug/test 构建可用 `HANGAR_TEST_TOKEN_ENDPOINT` 和 `HANGAR_TEST_USAGE_ENDPOINT` 指向本地不可用端口，分别阻断 RT 刷新和模拟配额失败；Release 不读取这些覆盖值
