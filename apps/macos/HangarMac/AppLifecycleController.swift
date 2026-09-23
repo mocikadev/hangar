@@ -6,7 +6,9 @@ final class AppLifecycleController: NSObject, NSApplicationDelegate {
     private var quotaRefreshTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.applicationIconImage = NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+        if let icon = NSImage(named: "HangarDockIcon") {
+            NSApp.applicationIconImage = icon
+        }
         Task { await model.refresh() }
         NotificationCenter.default.addObserver(
             self,
