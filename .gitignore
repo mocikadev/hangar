@@ -2,5 +2,6 @@
 /build
 /apps/macos/build/
 /dist
+.DS_Store
 .superpowers/
 .atomcode/
