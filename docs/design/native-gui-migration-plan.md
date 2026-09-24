@@ -142,7 +142,7 @@ poll_result / typed completion
 - 原生 App 沿用旧 GUI 的 Bundle ID `dev.mocika.hangar`，包名和显示名为 `Hangar.app` / Hangar；替代旧 GUI 时先退出旧进程，再安装新 App，不让同 Bundle ID 的两版并行运行。CLI 仍为独立的 `hangar` 命令，安装于 `~/.local/bin`，与 App 共用 Core 的账号库和官方 Codex 配置路径，不互相捆绑或改写安装位置。
 - CLI 保留 `vX.Y.Z` 标签、GitHub `latest`、安装脚本和自升级通道。macOS 原生 GUI 采用独立 `macos-gui-vX.Y.Z` 标签和独立发布流水线，不触发 CLI 自升级；其 GitHub Release 不设为 `latest`。GUI 首个原生版本为 0.7.0，承接已发布旧 GUI 0.6.0，不因 CLI 当前也是 0.7.0 而要求以后两端同步升级。`hangar-core` 与 `hangar-uniffi` 的 0.1.0 仅为内部 crate 版本，不是桌面发行版号。
 - 用户决定本轮暂不公开发布原生 GUI：待 Linux 原生版在 Linux 主机完成并验收后，再协调 macOS/Linux 的发布时间。协调发布不等于共用一份安装包或由 macOS 构建证明 Linux 可用；macOS arm64/x64 DMG、Linux 对应产物仍需各自打包和验证。
-- Xcode Debug/Release 的 `MARKETING_VERSION` 均为 0.7.0，`CURRENT_PROJECT_VERSION` 为符合 [Apple `CFBundleVersion` 数字分段格式](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html)的 1.7.0（首个原生代际为 1，后两段映射 GUI 的 minor/patch）；后续公开构建必须严格递增且不得把不同公开字节复用同一版本/构建号。计划中的 arm64 资产名为 `hangar-0.7.0-desktop-macos-arm64.dmg`；x64/universal 不能仅靠命名宣称支持。N25/N26 落地前不创建标签、DMG 或公开发行；安装替换、回退旧 0.6.0 DMG 与共享数据兼容性须在候选阶段单独验证。
+- Xcode Debug/Release 的 `MARKETING_VERSION` 均为 0.7.0，`CURRENT_PROJECT_VERSION` 为符合 [Apple `CFBundleVersion` 数字分段格式](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html)的 1.7.0（首个原生代际为 1，后两段映射 GUI 的 minor/patch）；后续公开构建必须严格递增且不得把不同公开字节复用同一版本/构建号。计划中的 arm64 资产名为 `hangar-0.7.0-desktop-macos-arm64.dmg`；x64/universal 不能仅靠命名宣称支持。用户已授权在本机用 ad-hoc 签名 DMG 供少量实际试用；这不等于 N26 完成、正式候选或公开发行，不创建标签或 GitHub Release。安装替换、回退旧 0.6.0 DMG 与共享数据兼容性须在正式候选阶段单独验证。
 
 ## 5. Linux 阶段交接契约
 
@@ -216,7 +216,7 @@ Linux 阶段**尚未实现**，只在 Linux 主机开始。接手 AI 先读 [Lin
 - [ ] N26 完成签名、公证、DMG、最终 SHA/产物清单与回退说明
 - [ ] N27 真机确认 7～8 个真实账号总览、刷新、推荐、切换、重登、菜单栏和 Dock 生命周期
 
-N26 在本轮只做前置审计，不发布：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥匙串仅有 Apple Development 身份，没有 Developer ID Application；当前本地 App 为 ad-hoc 签名，严格 `codesign` 校验通过而 Gatekeeper 拒绝。待具备实际发行身份并准备发布时，按 [Apple 的 DMG 分发流程](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution)完成“Developer ID 签名 App → 组装并签名 DMG → 对最终 DMG 公证及装订 → 从 DMG 安装复验/Gatekeeper 检查 → 最终 SHA/资产清单 → 旧 0.6.0 回退演练”；不能将开发证书或本地 ad-hoc 签名记为 N26 完成，也不预先创建标签、DMG 或 Release。
+N26 仍未完成：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥匙串仅有 Apple Development 身份，没有 Developer ID Application；用户决定本地试用包只做 ad-hoc 签名，不为此购买正式证书或公证。严格 `codesign` 校验通过而 Gatekeeper 拒绝是已知限制。若将来决定公开发行，再按 [Apple 的 DMG 分发流程](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution)评估 Developer ID、公证、从 DMG 安装复验、最终 SHA/资产清单和旧版回退演练；不能将本地 ad-hoc DMG 记为 N26 完成，不创建标签或 GitHub Release。
 
 ### Phase 5：Linux 原生应用（切换到 Linux 主机后执行）
 
@@ -290,6 +290,7 @@ N26 在本轮只做前置审计，不发布：本机具备 `notarytool`、`codes
 - 随后用 `open -n -F` 经 LaunchServices 启动同一 Release `.app`，`HOME`/`CODEX_HOME` 均为全新的空隔离目录，未放入账号、官方认证或配额缓存。进程环境已回读；macOS 报告前台应用为 Hangar，辅助功能接口报告一个标题为“账号总览”、位置 (221, 70)、尺寸 1180×760 的窗口；用户目视确认能看到空账号窗口。此检查只覆盖无凭据启动与窗口显示，六张卡片、缓存周剩余和推荐均未在这轮验证。
 - 再用进程级 `sandbox-exec` 直接启动同一 Release 可执行文件：先在空隔离目录下确认用户能看见窗口；同一策略的 TCP 探针返回 `Operation not permitted`，对真实 `~/.hangar/accounts.json` 的读取探针也被拒绝。随后仅将真实 `accounts.json`、`quota-cache.json` 和官方 `auth.json` 复制到权限 700/600 的临时 HOME/CODEX_HOME，阻网启动；进程环境回读到该临时目录，辅助功能接口报告 1 个“使用中”、5 个“切换到此账号”和 5 处周剩余缓存，用户目视确认 6 张卡片与缓存周剩余可见。用户补充确认有 1 个账号未取到额度、没有推荐标记；缓存已约 59 分钟，超过 30 分钟新鲜度阈值，Core 按设计不应基于旧值给出推荐。这一轮未点击切换、登录或手动刷新，隔离副本的账号库、认证和配额缓存最终仍与源文件字节相同；进程已结束，临时凭据副本已删除。N23 所指本机 Release 配置只读冒烟完成；此检查不能代替 LaunchServices 的完整 `.app` Dock/菜单栏验收，N26/N27 仍开放。
 - N23 收口门禁：在全新隔离 HOME/CODEX_HOME 下依次执行 `cargo fmt`、`cargo clippy -- -D warnings`、`cargo test`，90 项测试通过；仅文档有未提交改动，Release 二进制 SHA-256 为 `165c47e45ff522d2c1d76b08e3d32ee610a3fe00d54c319cc647fbc4804d5ed4`。N26 前置审计发现当前钥匙串有 2 个 Apple Development 身份、0 个 Developer ID Application；本地包仍是 ad-hoc 签名，`codesign --verify --deep --strict` 通过、`spctl --assess --type execute` 拒绝。N26 不因工具可用或本地构建通过而关闭。
+- 2026-09-23 本地 DMG 图标复验：首次 ad-hoc 试用 DMG 中 Finder 图标仍有明显白框；其 1024px 源图与包内旧 `AppIcon.icns` 均没有白框，之前的 `HangarDockIcon` 运行时覆盖只解决 Dock。现用 Xcode/Icon Composer 的 `AppIcon.icon` 资源接入黑底白标，关闭图层高光、半透明和阴影；macOS 27 arm64 Release 构建、包内版本/架构回读、App/DMG 严格签名校验和 DMG 完整性通过。Finder 直接查看构建 App 及挂载后的 DMG，在 48–64 图标尺寸下均无此前的明显白框，仍有系统渲染的轻微暗色边缘；已生成新的本地试用 DMG，SHA-256 为 `726bd346d0168824447f53721de28967a73aa762496a0c080eee509d3655cd78`。隔离 HOME/CODEX_HOME 下 `cargo fmt → cargo clippy -- -D warnings → cargo test` 再次通过（90 项）；没有从新 DMG 启动或执行账号写操作，也未验证 macOS 14/x64。用户目视确认与 N27 操作验收仍待完成。
 
 ## 8. 完成定义
 
