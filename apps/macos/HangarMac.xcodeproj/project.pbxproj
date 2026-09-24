@@ -22,6 +22,7 @@
 		A10000000000000000000015 /* OAuthLoginSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* OAuthLoginSheet.swift */; };
 		A10000000000000000000016 /* DoctorSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* DoctorSheetView.swift */; };
 		A10000000000000000000017 /* AccountDisplayOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* AccountDisplayOrder.swift */; };
+		A10000000000000000000018 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* AppIcon.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		A20000000000000000000015 /* OAuthLoginSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthLoginSheet.swift; sourceTree = "<group>"; };
 		A20000000000000000000016 /* DoctorSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoctorSheetView.swift; sourceTree = "<group>"; };
 		A20000000000000000000017 /* AccountDisplayOrder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDisplayOrder.swift; sourceTree = "<group>"; };
+		A20000000000000000000018 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -61,6 +63,7 @@
 				A20000000000000000000002 /* ContentView.swift */,
 				A20000000000000000000005 /* HangarModel.swift */,
 				A20000000000000000000017 /* AccountDisplayOrder.swift */,
+				A20000000000000000000018 /* AppIcon.icon */,
 				A20000000000000000000006 /* DashboardView.swift */,
 				A20000000000000000000007 /* AccountCardView.swift */,
 				A20000000000000000000008 /* QuotaContent.swift */,
@@ -135,7 +138,7 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A50000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000010 /* Assets.xcassets in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		A50000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000010 /* Assets.xcassets in Resources */, A10000000000000000000018 /* AppIcon.icon in Resources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -155,7 +158,7 @@
 			LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/../../target/debug");
 			MACOSX_DEPLOYMENT_TARGET = 14.0;
 			MARKETING_VERSION = 0.7.0;
-			OTHER_LDFLAGS = ("$(inherited)", "-lhangar_uniffi");
+			OTHER_LDFLAGS = ("$(inherited)", "$(SRCROOT)/../../target/debug/libhangar_uniffi.a");
 			OTHER_SWIFT_FLAGS = ("$(inherited)", "-Xcc", "-fmodule-map-file=$(SRCROOT)/../../build/generated/swift/module.modulemap");
 			PRODUCT_BUNDLE_IDENTIFIER = dev.mocika.hangar;
 			PRODUCT_NAME = Hangar;
@@ -171,7 +174,7 @@
 			LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/../../target/release");
 			MACOSX_DEPLOYMENT_TARGET = 14.0;
 			MARKETING_VERSION = 0.7.0;
-			OTHER_LDFLAGS = ("$(inherited)", "-lhangar_uniffi");
+			OTHER_LDFLAGS = ("$(inherited)", "$(SRCROOT)/../../target/release/libhangar_uniffi.a");
 			OTHER_SWIFT_FLAGS = ("$(inherited)", "-Xcc", "-fmodule-map-file=$(SRCROOT)/../../build/generated/swift/module.modulemap");
 			PRODUCT_BUNDLE_IDENTIFIER = dev.mocika.hangar;
 			PRODUCT_NAME = Hangar;
