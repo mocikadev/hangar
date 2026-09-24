@@ -10,6 +10,8 @@ on:
       - 'crates/hangar-core/**'
       - 'crates/hangar-uniffi/**'
       - 'apps/macos/**'
+      - 'resources/shared/hangar-icon.svg'
+      - 'scripts/generate-macos-app-icons.sh'
       - 'scripts/generate-swift-bindings.sh'
       - '.github/workflows/native-macos-ci.yml'
   pull_request:
@@ -20,6 +22,8 @@ on:
       - 'crates/hangar-core/**'
       - 'crates/hangar-uniffi/**'
       - 'apps/macos/**'
+      - 'resources/shared/hangar-icon.svg'
+      - 'scripts/generate-macos-app-icons.sh'
       - 'scripts/generate-swift-bindings.sh'
       - '.github/workflows/native-macos-ci.yml'
 
@@ -68,14 +72,22 @@ jobs:
             apps/macos/HangarMac/AccountDisplayOrder.swift
           "$RUNNER_TEMP/account-display-order-tests"
 
+      - name: Check canonical macOS icon source
+        run: scripts/generate-macos-app-icons.sh --check-source
+
       - name: Build native App (Debug and Release)
         run: |
           set -eu
           for config in Debug Release; do
+            cargo_settings=()
+            if [ "$config" = Release ]; then
+              cargo_settings=(CARGO_TARGET_DIR="$RUNNER_TEMP/hangar-cargo-release")
+            fi
             xcodebuild -project apps/macos/HangarMac.xcodeproj \
               -scheme HangarMac -configuration "$config" \
               -destination "platform=macOS,arch=$(uname -m)" \
-              -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO build
+              -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO \
+              "${cargo_settings[@]}" build
             app="build/xcode/Build/Products/$config/Hangar.app"
             plist="$app/Contents/Info.plist"
             test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = 'dev.mocika.hangar'
@@ -83,4 +95,8 @@ jobs:
             test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" = '1.7.0'
             test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" = '14.0'
             test "$(lipo -archs "$app/Contents/MacOS/Hangar")" = "$(uname -m)"
+            if [ "$config" = Release ]; then
+              test -s "$RUNNER_TEMP/hangar-cargo-release/release/libhangar_uniffi.a"
+            fi
+            ! otool -L "$app/Contents/MacOS/Hangar" | grep -q 'libhangar_uniffi.dylib'
           done

@@ -26,6 +26,7 @@
 |------|------|
 | [architecture.md](design/architecture.md) | 分层架构、模块边界、harvest/切换/原子写/锁/OAuth 等关键机制 |
 | [native-gui-migration-plan.md](design/native-gui-migration-plan.md) | 原生 GUI 目标架构、账号仪表盘、目录重构、宿主平台门禁与 macOS/Linux 分阶段任务 |
+| [recent-fixes-hardening-plan.md](design/recent-fixes-hardening-plan.md) | 近期 HTTP 双栈、macOS 静态链接路径与图标来源收口任务 |
 | [linux-native-gui-handoff.md](design/linux-native-gui-handoff.md) | Linux 主机接手顺序、当前未实现状态、N28–N33 执行/验收边界 |
 | [scenarios.md](design/scenarios.md) | S1-S13 令牌一致性场景、风险与方案、安全声明 |
 | [v0.4.0-closure-plan.md](design/v0.4.0-closure-plan.md) | v0.4.0 收口任务、平台验收与发布记录（历史归档） |
