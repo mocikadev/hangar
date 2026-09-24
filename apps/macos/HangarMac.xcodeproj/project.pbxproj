@@ -130,7 +130,7 @@
 			files = ();
 			inputPaths = ("$(SRCROOT)/../../crates/hangar-uniffi/src/lib.rs", "$(SRCROOT)/../../crates/hangar-core/src/lib.rs");
 			name = "Generate Rust Bridge";
-			outputPaths = ("$(SRCROOT)/../../build/generated/swift/HangarCore.swift", "$(SRCROOT)/../../target/debug/libhangar_uniffi.a", "$(SRCROOT)/../../target/release/libhangar_uniffi.a");
+			outputPaths = ("$(SRCROOT)/../../build/generated/swift/HangarCore.swift", "$(CARGO_TARGET_DIR)/debug/libhangar_uniffi.a", "$(CARGO_TARGET_DIR)/release/libhangar_uniffi.a");
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "case \"$CONFIGURATION\" in\n    Debug) export HANGAR_UNIFFI_PROFILE=debug ;;\n    *) export HANGAR_UNIFFI_PROFILE=release ;;\nesac\n\"$SRCROOT/../../scripts/generate-swift-bindings.sh\"\n";
@@ -150,15 +150,16 @@
 		A80000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; }; name = Release; };
 		A80000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+			CARGO_TARGET_DIR = "$(SRCROOT)/../../target";
 			CODE_SIGNING_ALLOWED = NO;
 			CURRENT_PROJECT_VERSION = 1.7.0;
 			ENABLE_USER_SCRIPT_SANDBOXING = NO;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = HangarMac/Info.plist;
-			LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/../../target/debug");
+			LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(CARGO_TARGET_DIR)/debug");
 			MACOSX_DEPLOYMENT_TARGET = 14.0;
 			MARKETING_VERSION = 0.7.0;
-			OTHER_LDFLAGS = ("$(inherited)", "$(SRCROOT)/../../target/debug/libhangar_uniffi.a");
+			OTHER_LDFLAGS = ("$(inherited)", "$(CARGO_TARGET_DIR)/debug/libhangar_uniffi.a");
 			OTHER_SWIFT_FLAGS = ("$(inherited)", "-Xcc", "-fmodule-map-file=$(SRCROOT)/../../build/generated/swift/module.modulemap");
 			PRODUCT_BUNDLE_IDENTIFIER = dev.mocika.hangar;
 			PRODUCT_NAME = Hangar;
@@ -166,15 +167,16 @@
 		}; name = Debug; };
 		A80000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+			CARGO_TARGET_DIR = "$(SRCROOT)/../../target";
 			CODE_SIGNING_ALLOWED = NO;
 			CURRENT_PROJECT_VERSION = 1.7.0;
 			ENABLE_USER_SCRIPT_SANDBOXING = NO;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = HangarMac/Info.plist;
-			LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/../../target/release");
+			LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(CARGO_TARGET_DIR)/release");
 			MACOSX_DEPLOYMENT_TARGET = 14.0;
 			MARKETING_VERSION = 0.7.0;
-			OTHER_LDFLAGS = ("$(inherited)", "$(SRCROOT)/../../target/release/libhangar_uniffi.a");
+			OTHER_LDFLAGS = ("$(inherited)", "$(CARGO_TARGET_DIR)/release/libhangar_uniffi.a");
 			OTHER_SWIFT_FLAGS = ("$(inherited)", "-Xcc", "-fmodule-map-file=$(SRCROOT)/../../build/generated/swift/module.modulemap");
 			PRODUCT_BUNDLE_IDENTIFIER = dev.mocika.hangar;
 			PRODUCT_NAME = Hangar;
