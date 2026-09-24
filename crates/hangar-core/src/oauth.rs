@@ -648,10 +648,7 @@ fn extract_token_error_code(body: &str) -> Option<String> {
 /// 带超时的 HTTP 客户端：默认 ureq 无超时，网络黑洞会卡死 CLI（且 switch 持锁横跨请求，
 /// 会连带阻塞第二实例至锁过期）。对齐 cockpit 25s 请求超时
 fn http_agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout(Duration::from_secs(25))
-        .build()
+    crate::http::agent()
 }
 
 fn send_form_checked(

@@ -6,8 +6,6 @@
 //!   实测有账号 primary 即 8 天窗口）；缺失的窗口直接略过，不硬凑“5h/周”
 //! - 非公开契约：解析全容错，失败只影响单账号展示，不阻断其他账号
 
-use std::time::Duration;
-
 use crate::account::Account;
 
 const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
@@ -156,10 +154,7 @@ fn fetch_once(access_token: &str, account_id: Option<&str>) -> Result<Quota, Str
         std::env::var("HANGAR_TEST_USAGE_ENDPOINT").unwrap_or_else(|_| USAGE_URL.to_string());
     #[cfg(not(debug_assertions))]
     let usage_url = USAGE_URL.to_string();
-    let mut req = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout(Duration::from_secs(25))
-        .build()
+    let mut req = crate::http::agent()
         .get(&usage_url)
         .set("Authorization", &format!("Bearer {}", access_token))
         .set("Accept", "application/json");
@@ -364,10 +359,7 @@ fn fetch_reset_credits(
     access_token: &str,
     account_id: Option<&str>,
 ) -> Result<ResetCredits, String> {
-    let mut req = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout(Duration::from_secs(25))
-        .build()
+    let mut req = crate::http::agent()
         .get(RESET_CREDITS_URL)
         .set("Authorization", &format!("Bearer {}", access_token))
         .set("Accept", "application/json");

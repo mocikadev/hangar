@@ -136,10 +136,7 @@ pub fn check_update(force: bool, current_version: &str) -> Result<Option<Release
 }
 
 fn agent(connect: Duration, total: Duration) -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(connect)
-        .timeout(total)
-        .build()
+    crate::http::build(connect, total)
 }
 
 /// 脱敏的 ureq 错误：只记 status + body_len，不回显 body

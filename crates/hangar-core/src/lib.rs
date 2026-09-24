@@ -13,6 +13,7 @@
 pub mod account;
 pub mod doctor;
 pub mod emit;
+pub mod http;
 pub mod login;
 pub mod oauth;
 pub mod operation;
