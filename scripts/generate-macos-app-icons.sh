@@ -3,9 +3,9 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 source_icon="$repo_root/resources/shared/hangar-icon.svg"
-icon_set="$repo_root/apps/macos/HangarMac/Assets.xcassets/AppIcon.appiconset"
-dock_icon_set="$repo_root/apps/macos/HangarMac/Assets.xcassets/HangarDockIcon.imageset"
-foreground_icon="$repo_root/apps/macos/HangarMac/AppIcon.icon/Assets/hangar-icon-foreground.svg"
+icon_set="$repo_root/apps/macos/Hangar/Assets.xcassets/AppIcon.appiconset"
+dock_icon_set="$repo_root/apps/macos/Hangar/Assets.xcassets/HangarDockIcon.imageset"
+foreground_icon="$repo_root/apps/macos/Hangar/AppIcon.icon/Assets/hangar-icon-foreground.svg"
 master_icon="$icon_set/icon_512x512@2x.png"
 
 # 完整 SVG 是规范源；Icon Composer 使用去掉唯一黑色底板后的同一标志。

@@ -32,12 +32,14 @@
 
 ```bash
 scripts/generate-swift-bindings.sh
-xcodebuild -project apps/macos/HangarMac.xcodeproj \
-  -scheme HangarMac -configuration Debug \
+xcodebuild -project apps/macos/Hangar.xcodeproj \
+  -scheme Hangar -configuration Debug \
   -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO build
 ```
 
 - Swift 冒烟程序必须真实链接 release 静态库并调用 `bridgeInfo()`，不能只检查生成文件存在。
+- macOS 工程以 Xcode 模板及提交的共享 `Hangar` Scheme 为基线；Debug/Release 均回读 Bundle ID、版本、最低系统、架构和静态库链接。`Info.plist` 由 Xcode 根据构建设置生成，不再从源码目录复制手写清单。
+- 新 App 图标先在 Icon Composer 中审核 `AppIcon.icon`，再用 `scripts/generate-macos-app-icons.sh --check-source` 核对前景与共享 SVG；构建后确认 `AppIcon.icns` 在包内，并分别目视 Finder、DMG、Dock、菜单栏。旧 AppIcon PNG 集只作兼容核查，不代表 Composer 最终效果。
 - 真实账号运行必须复制账号库到隔离 `HOME`/`CODEX_HOME`；不得让开发版 GUI 对用户真实配置执行刷新或写入。
 - UI 验收需确认 7～8 个卡片、串行加载状态、周剩余、推荐标记与 stale 提示；同时检查应用图标、关闭窗口后 Dock 隐藏、菜单栏恢复窗口与真正退出。仅构建成功不能替代可视验收。
 - 只读 UI 验收（例如排序、键盘焦点）不得点击会切换账号、删除账号或启动 OAuth 的控件来探测焦点；自动化操作前先获取当前无障碍树并核对控件完整标签，窗口/菜单变化后重新取元素编号。即使使用隔离副本，也遵守“不要切换”等当次操作约束。

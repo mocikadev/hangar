@@ -144,6 +144,14 @@ poll_result / typed completion
 - 用户决定本轮暂不公开发布原生 GUI：待 Linux 原生版在 Linux 主机完成并验收后，再协调 macOS/Linux 的发布时间。协调发布不等于共用一份安装包或由 macOS 构建证明 Linux 可用；macOS arm64/x64 DMG、Linux 对应产物仍需各自打包和验证。
 - Xcode Debug/Release 的 `MARKETING_VERSION` 均为 0.7.0，`CURRENT_PROJECT_VERSION` 为符合 [Apple `CFBundleVersion` 数字分段格式](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html)的 1.7.0（首个原生代际为 1，后两段映射 GUI 的 minor/patch）；后续公开构建必须严格递增且不得把不同公开字节复用同一版本/构建号。计划中的 arm64 资产名为 `hangar-0.7.0-desktop-macos-arm64.dmg`；x64/universal 不能仅靠命名宣称支持。用户已授权在本机用 ad-hoc 签名 DMG 供少量实际试用；这不等于 N26 完成、正式候选或公开发行，不创建标签或 GitHub Release。安装替换、回退旧 0.6.0 DMG 与共享数据兼容性须在正式候选阶段单独验证。
 
+### 4.6 macOS 工程与图标制作标准
+
+- 新建或重建 macOS App 时，使用 [Xcode 的 **macOS → App → SwiftUI/Swift** 模板](https://developer.apple.com/documentation/xcode/creating-an-xcode-project-for-an-app)生成工程骨架和共享 Scheme，不手写空白 `project.pbxproj`。当前工程由本机 Xcode 27.0 生成，保留 Xcode 的同步目录结构；这说明工程编辑工具链基线，不等于 App 只能运行在 macOS 27。UniFFI 绑定生成阶段、静态库链接和项目特有构建设置是显式追加的集成，不由模板自动保证。`xcuserdata/` 只存本机状态，不提交。
+- `apps/macos/Hangar/` 的手写 Swift 源码按功能放置：`App/` 管入口、生命周期与单一展示模型，`Dashboard/` 管总览/卡片/配额和展示排序，`Login/` 管 OAuth 展示状态与表单，`Diagnostics/` 管自检展示，`MenuBar/` 管状态栏菜单。`AppIcon.icon` 与 `Assets.xcassets` 留在应用根目录；UniFFI 生成绑定仍在 `build/generated/swift/`。目录分组不新增 Swift 模块、业务状态所有者或 Core 规则；Xcode 同步目录组纳入这些源码。
+- 模板默认值不能直接当作产品契约：Hangar 的 Bundle ID 固定为 `dev.mocika.hangar`，Debug/Release 均为 0.7.0/1.7.0，最低系统声明 14.0；为与 CLI 共用现有配置目录，App Sandbox 保持关闭；UniFFI 生成的 Swift 源码不能套用模板的全模块 MainActor 默认隔离。构建时从 Xcode 配置传递 `CARGO_TARGET_DIR`，Debug/Release 分别链接对应的 Rust 静态库。
+- **macOS App 图标以 `apps/macos/Hangar/AppIcon.icon` 为最终制作与审核入口**：在 [Apple Icon Composer](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer) 中调整底色、图层、阴影和透明效果，提交完整 `.icon` 资源；Finder、DMG 等系统位置使用其编译产物。`resources/shared/hangar-icon.svg` 是跨端品牌矢量源；其白色标志经 `scripts/generate-macos-app-icons.sh` 同步为 Composer 前景，脚本的 `--check-source` 防止前景漂移。更新标志时先更新共享 SVG，再同步前景并在 Composer 中审视最终效果，不直接手工改 JSON/PNG 冒充最终图标。
+- 旧 `Assets.xcassets/AppIcon.appiconset` 暂作低版本兼容核查资源，`HangarDockIcon` 是当前运行时 Dock 覆盖图，`HangarMenuIcon` 是菜单栏模板图；三者不是 Finder/DMG 主图标的替代来源。每次改图标均应构建 App，回读包内 `AppIcon.icns`，并在 Finder、挂载的 DMG、Dock 与菜单栏目视检查；macOS 27 的观感不能推断 macOS 14 或 x64 的结果。
+
 ## 5. Linux 阶段交接契约
 
 Linux 阶段**尚未实现**，只在 Linux 主机开始。接手 AI 先读 [Linux 原生 GUI 接手说明](linux-native-gui-handoff.md)完成 N28 环境基线，再按本文共享语义与 N29–N33 实现 GTK4/Libadwaita 原生应用；不能把 macOS 已完成项迁移为 Linux 已完成项。
@@ -254,7 +262,7 @@ N26 仍未完成：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥�
 
 ### Phase 3 当前验证记录（2026-09-22，macOS arm64）
 
-- 已建立 `apps/macos/HangarMac.xcodeproj`；Xcode Debug 构建会先生成 UniFFI 绑定，再产出 arm64 `Hangar.app`，`xcodebuild` 成功。
+- 已建立 macOS 原生 Xcode 工程（现名 `apps/macos/Hangar.xcodeproj`，早期记录中的 `HangarMac.xcodeproj` 已于 2026-09-25 更名）；Xcode Debug 构建会先生成 UniFFI 绑定，再产出 arm64 `Hangar.app`。
 - 已实现 SwiftUI 自适应卡片网格、周剩余单指标、逐卡加载/失败/stale 状态以及 Core 稳定推荐标记；状态由 `@MainActor @Observable` 模型轮询脱敏快照。
 - 开发版已使用真实账号库的隔离副本启动；用户确认账号卡片显示正常，N17–N18 验收完成。
 - N19 已实现后台切换任务、重复操作守卫、Codex 运行检测、成功/失败提示和切换后总览刷新。`scripts/run-macos-qa.sh` 在应用退出后会用离线 doctor 检查隔离账号库 current 与隔离 `auth.json` 是否一致。
@@ -292,6 +300,9 @@ N26 仍未完成：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥�
 - N23 收口门禁：在全新隔离 HOME/CODEX_HOME 下依次执行 `cargo fmt`、`cargo clippy -- -D warnings`、`cargo test`，90 项测试通过；仅文档有未提交改动，Release 二进制 SHA-256 为 `165c47e45ff522d2c1d76b08e3d32ee610a3fe00d54c319cc647fbc4804d5ed4`。N26 前置审计发现当前钥匙串有 2 个 Apple Development 身份、0 个 Developer ID Application；本地包仍是 ad-hoc 签名，`codesign --verify --deep --strict` 通过、`spctl --assess --type execute` 拒绝。N26 不因工具可用或本地构建通过而关闭。
 - 2026-09-23 本地 DMG 图标复验：首次 ad-hoc 试用 DMG 中 Finder 图标仍有明显白框；其 1024px 源图与包内旧 `AppIcon.icns` 均没有白框，之前的 `HangarDockIcon` 运行时覆盖只解决 Dock。现用 Xcode/Icon Composer 的 `AppIcon.icon` 资源接入黑底白标，关闭图层高光、半透明和阴影；macOS 27 arm64 Release 构建、包内版本/架构回读、App/DMG 严格签名校验和 DMG 完整性通过。Finder 直接查看构建 App 及挂载后的 DMG，在 48–64 图标尺寸下均无此前的明显白框，仍有系统渲染的轻微暗色边缘；已生成新的本地试用 DMG，SHA-256 为 `726bd346d0168824447f53721de28967a73aa762496a0c080eee509d3655cd78`。隔离 HOME/CODEX_HOME 下 `cargo fmt → cargo clippy -- -D warnings → cargo test` 再次通过（90 项）；没有从新 DMG 启动或执行账号写操作，也未验证 macOS 14/x64。用户目视确认与 N27 操作验收仍待完成。
 - 2026-09-25 近期修复审计的执行清单见 [近期修复收口任务](recent-fixes-hardening-plan.md)：HTTP 双栈连接回退、UniFFI 静态库目录一致性及 Icon Composer/旧 AppIcon 共享源。此清单只收口本机已实现能力，不改变 N26/N27 和 Linux N28–N33 的未完成状态。
+- 2026-09-25 macOS 工程骨架迁移：本机 Xcode 27.0 的 macOS App/SwiftUI 模板生成 `Hangar.xcodeproj`，保留同步源码目录并由 Xcode 创建共享 `Hangar` Scheme；原 SwiftUI 源码、Icon Composer `.icon`、UniFFI 构建与静态链接路径保持不变。模板默认的 macOS 27 部署目标、App Sandbox、Swift 全模块 MainActor 隔离与自动签名不适合现有契约，已显式恢复项目设置；Info.plist 改为 Xcode 生成。隔离 HOME/CODEX_HOME 下 arm64 Debug 和自定义 `CARGO_TARGET_DIR` 的 Release 构建通过；包内 ID/版本/14.0 声明、arm64、静态链接和 `AppIcon.icns` 回读通过，Composer 图标产物与迁移前 SHA-256 相同。独立 Swift 测试和 93 项 Rust 测试通过；代码审查后将 macOS GUI CI 从默认 Xcode 26 的 `macos-latest` 固定到 GitHub 的 `xcode-27` arm64 runner。尚未运行新工程 App 的交互验收，也未验证 macOS 14、x64、远端 CI 或 DMG，因此 N26/N27 状态不变。
+- 2026-09-25 macOS 源码目录整理：将 13 个手写 Swift 文件归入 `App/`、`Dashboard/`、`Login/`、`Diagnostics/`、`MenuBar/`，去掉只转发到总览的 `ContentView`，应用入口直接挂载 `DashboardView`；未改 Core、UniFFI 或账号行为。CI 的 Swift 排序测试路径已同步。隔离 HOME/CODEX_HOME 下 Xcode arm64 Debug/Release 构建、独立 Swift 测试和 `cargo fmt → cargo clippy -- -D warnings → cargo test` 均通过；未对新布局执行 GUI 交互验收。
+- 2026-09-25 新目录 Release 空配置冒烟：用 LaunchServices `open -n -F --env` 启动本次 Release App，进程环境回读为全新临时 `HOME/CODEX_HOME` 和 `HANGAR_TEST_HOME=1`；System Events 看到一个标题为“账号总览”的主窗口，状态栏菜单可见并列出“当前账号未知、刷新周额度、显示 Hangar、退出 Hangar”。临时 HOME 未生成账号文件，未执行登录、切换或刷新；验证后已结束进程并清理隔离目录。该轮未做卡片内容的人工视觉检查，也未验证 macOS 14、x64、DMG 或远端 CI。
 
 ## 8. 完成定义
 

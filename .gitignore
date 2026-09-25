@@ -3,5 +3,6 @@
 /apps/macos/build/
 /dist
 .DS_Store
+xcuserdata/
 .superpowers/
 .atomcode/

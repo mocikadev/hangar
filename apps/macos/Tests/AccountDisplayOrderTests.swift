@@ -1,4 +1,4 @@
-// Standalone projection test; compile with HangarMac/AccountDisplayOrder.swift.
+// Standalone projection test; compile with Hangar/Dashboard/AccountDisplayOrder.swift.
 // These minimal records only model display fields and contain no credentials.
 struct AccountRecord {
     let id: String

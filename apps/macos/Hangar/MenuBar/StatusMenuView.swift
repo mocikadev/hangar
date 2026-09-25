@@ -47,7 +47,7 @@ struct StatusMenuView: View {
     private func showMainWindow() {
         lifecycle.prepareToShowMainWindow()
         if !lifecycle.showExistingMainWindow() {
-            openWindow(id: HangarMacApp.mainWindowID)
+            openWindow(id: HangarApp.mainWindowID)
         }
         lifecycle.finishShowingMainWindow()
     }
