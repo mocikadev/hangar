@@ -80,15 +80,20 @@ jobs:
           set -eu
           test -s apps/macos/Hangar.xcodeproj/xcshareddata/xcschemes/Hangar.xcscheme
           for config in Debug Release; do
-            cargo_settings=()
             if [ "$config" = Release ]; then
-              cargo_settings=(CARGO_TARGET_DIR="$RUNNER_TEMP/hangar-cargo-release")
+              CARGO_TARGET_DIR="$RUNNER_TEMP/hangar-cargo-release" \
+                xcodebuild -project apps/macos/Hangar.xcodeproj \
+                  -scheme Hangar -configuration "$config" \
+                  -destination "platform=macOS,arch=$(uname -m)" \
+                  -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO \
+                  build
+            else
+              xcodebuild -project apps/macos/Hangar.xcodeproj \
+                -scheme Hangar -configuration "$config" \
+                -destination "platform=macOS,arch=$(uname -m)" \
+                -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO \
+                build
             fi
-            xcodebuild -project apps/macos/Hangar.xcodeproj \
-              -scheme Hangar -configuration "$config" \
-              -destination "platform=macOS,arch=$(uname -m)" \
-              -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO \
-              "${cargo_settings[@]}" build
             app="build/xcode/Build/Products/$config/Hangar.app"
             plist="$app/Contents/Info.plist"
             test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = 'dev.mocika.hangar'
