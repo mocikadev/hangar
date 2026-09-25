@@ -81,12 +81,11 @@ jobs:
           test -s apps/macos/Hangar.xcodeproj/xcshareddata/xcschemes/Hangar.xcscheme
           for config in Debug Release; do
             if [ "$config" = Release ]; then
-              CARGO_TARGET_DIR="$RUNNER_TEMP/hangar-cargo-release" \
-                xcodebuild -project apps/macos/Hangar.xcodeproj \
-                  -scheme Hangar -configuration "$config" \
-                  -destination "platform=macOS,arch=$(uname -m)" \
-                  -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO \
-                  build
+              xcodebuild -project apps/macos/Hangar.xcodeproj \
+                -scheme Hangar -configuration "$config" \
+                -destination "platform=macOS,arch=$(uname -m)" \
+                -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO \
+                CARGO_TARGET_DIR="$RUNNER_TEMP/hangar-cargo-release" build
             else
               xcodebuild -project apps/macos/Hangar.xcodeproj \
                 -scheme Hangar -configuration "$config" \
