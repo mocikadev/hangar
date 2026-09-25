@@ -305,6 +305,7 @@ N26 仍未完成：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥�
 - 2026-09-25 新目录 Release 空配置冒烟：用 LaunchServices `open -n -F --env` 启动本次 Release App，进程环境回读为全新临时 `HOME/CODEX_HOME` 和 `HANGAR_TEST_HOME=1`；System Events 看到一个标题为“账号总览”的主窗口，状态栏菜单可见并列出“当前账号未知、刷新周额度、显示 Hangar、退出 Hangar”。临时 HOME 未生成账号文件，未执行登录、切换或刷新；验证后已结束进程并清理隔离目录。该轮未做卡片内容的人工视觉检查，也未验证 macOS 14、x64、DMG 或远端 CI。
 - 2026-09-25 首次远端 `xcode-27` CI 暴露 `cargo clippy --all-targets -- -D warnings` 的测试辅助代码问题：`http.rs` 的 IPv6 回退测试忽略 `TcpStream::read` 返回的字节数。现已记录并断言读取量大于零，避免使用可能等待固定缓冲区长度的 `read_exact`；本机使用 CI 同等 clippy/test 命令通过，待修复提交后的远端工作流回读。
 - 2026-09-25 本机 Release 安装验收：使用隔离 `HOME`/`CODEX_HOME` 和阻网沙箱启动 `build/xcode-layout/Build/Products/Release/Hangar.app`，复制真实账号库、官方认证和配额缓存但未触碰源文件；System Events 看到“账号总览”窗口（1180×760），退出后源 `accounts.json` 与 `auth.json` SHA-256 保持不变。包回读为 Bundle ID `dev.mocika.hangar`、`CFBundleShortVersionString=0.7.0`、`CFBundleVersion=1.7.0`、最低系统 14.0、arm64，静态 UniFFI 链接且无 `libhangar_uniffi.dylib` 依赖；ad-hoc `codesign --verify --deep --strict` 通过。验收后的 Release App 已安装到 `/Applications/Hangar.app`，旧 App 与所有临时构建/凭据目录移入废纸篓；未升级版本、未打 Tag、未发布，仍只覆盖本机 macOS arm64。
+- 2026-09-25 日期显示统一为中文格式：macOS 卡片上的额度更新时间、周额度重置时间和重置卡到期时间均使用 `yyyy年M月d日 HH:mm`，固定 `zh_CN` 区域且沿用系统时区；新增独立 Swift 格式化测试并纳入 macOS CI。Release App 已重新构建、签名、安装并完成空隔离配置启动检查。
 
 ## 8. 完成定义
 

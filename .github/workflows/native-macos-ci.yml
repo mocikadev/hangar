@@ -72,6 +72,13 @@ jobs:
             apps/macos/Hangar/Dashboard/AccountDisplayOrder.swift
           "$RUNNER_TEMP/account-display-order-tests"
 
+      - name: Swift date formatting test
+        run: |
+          swiftc -o "$RUNNER_TEMP/date-formatting-tests" \
+            apps/macos/Tests/DateFormattingTests.swift \
+            apps/macos/Hangar/Dashboard/DateFormatting.swift
+          "$RUNNER_TEMP/date-formatting-tests"
+
       - name: Check canonical macOS icon source
         run: scripts/generate-macos-app-icons.sh --check-source
 

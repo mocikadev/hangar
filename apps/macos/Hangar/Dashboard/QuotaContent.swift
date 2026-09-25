@@ -74,8 +74,7 @@ struct QuotaContent: View {
     }
 
     private func formattedTime(_ timestamp: Int64) -> String {
-        Date(timeIntervalSince1970: TimeInterval(timestamp))
-            .formatted(date: .abbreviated, time: .shortened)
+        HangarDateFormatting.string(from: timestamp)
     }
 
     private func weeklyResetDescription() -> String {
