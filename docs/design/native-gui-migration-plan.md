@@ -303,6 +303,7 @@ N26 仍未完成：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥�
 - 2026-09-25 macOS 工程骨架迁移：本机 Xcode 27.0 的 macOS App/SwiftUI 模板生成 `Hangar.xcodeproj`，保留同步源码目录并由 Xcode 创建共享 `Hangar` Scheme；原 SwiftUI 源码、Icon Composer `.icon`、UniFFI 构建与静态链接路径保持不变。模板默认的 macOS 27 部署目标、App Sandbox、Swift 全模块 MainActor 隔离与自动签名不适合现有契约，已显式恢复项目设置；Info.plist 改为 Xcode 生成。隔离 HOME/CODEX_HOME 下 arm64 Debug 和自定义 `CARGO_TARGET_DIR` 的 Release 构建通过；包内 ID/版本/14.0 声明、arm64、静态链接和 `AppIcon.icns` 回读通过，Composer 图标产物与迁移前 SHA-256 相同。独立 Swift 测试和 93 项 Rust 测试通过；代码审查后将 macOS GUI CI 从默认 Xcode 26 的 `macos-latest` 固定到 GitHub 的 `xcode-27` arm64 runner。尚未运行新工程 App 的交互验收，也未验证 macOS 14、x64、远端 CI 或 DMG，因此 N26/N27 状态不变。
 - 2026-09-25 macOS 源码目录整理：将 13 个手写 Swift 文件归入 `App/`、`Dashboard/`、`Login/`、`Diagnostics/`、`MenuBar/`，去掉只转发到总览的 `ContentView`，应用入口直接挂载 `DashboardView`；未改 Core、UniFFI 或账号行为。CI 的 Swift 排序测试路径已同步。隔离 HOME/CODEX_HOME 下 Xcode arm64 Debug/Release 构建、独立 Swift 测试和 `cargo fmt → cargo clippy -- -D warnings → cargo test` 均通过；未对新布局执行 GUI 交互验收。
 - 2026-09-25 新目录 Release 空配置冒烟：用 LaunchServices `open -n -F --env` 启动本次 Release App，进程环境回读为全新临时 `HOME/CODEX_HOME` 和 `HANGAR_TEST_HOME=1`；System Events 看到一个标题为“账号总览”的主窗口，状态栏菜单可见并列出“当前账号未知、刷新周额度、显示 Hangar、退出 Hangar”。临时 HOME 未生成账号文件，未执行登录、切换或刷新；验证后已结束进程并清理隔离目录。该轮未做卡片内容的人工视觉检查，也未验证 macOS 14、x64、DMG 或远端 CI。
+- 2026-09-25 首次远端 `xcode-27` CI 暴露 `cargo clippy --all-targets -- -D warnings` 的测试辅助代码问题：`http.rs` 的 IPv6 回退测试忽略 `TcpStream::read` 返回的字节数。现已记录并断言读取量大于零，避免使用可能等待固定缓冲区长度的 `read_exact`；本机使用 CI 同等 clippy/test 命令通过，待修复提交后的远端工作流回读。
 
 ## 8. 完成定义
 

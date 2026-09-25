@@ -88,7 +88,8 @@ mod tests {
         let server = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut request = [0_u8; 1024];
-            stream.read(&mut request).unwrap();
+            let bytes_read = stream.read(&mut request).unwrap();
+            assert!(bytes_read > 0);
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
                 .unwrap();
