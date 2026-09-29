@@ -26,8 +26,13 @@ struct StatusMenuView: View {
 
         Divider()
 
-        Button("刷新周额度", systemImage: "arrow.clockwise") {
+        Button {
             Task { await model.refresh(force: true) }
+        } label: {
+            Label(
+                model.isRefreshing ? "刷新中…" : "刷新周额度",
+                systemImage: model.isRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise"
+            )
         }
         .disabled(model.isBusy)
         Button("显示 Hangar", systemImage: "macwindow", action: showMainWindow)

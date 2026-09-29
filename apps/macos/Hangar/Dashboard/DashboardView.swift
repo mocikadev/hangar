@@ -42,14 +42,30 @@ struct DashboardView: View {
             }
             .navigationTitle("账号总览")
             .safeAreaInset(edge: .top) {
-                if ProcessInfo.processInfo.environment["HANGAR_TEST_HOME"] != nil {
-                    Label("隔离验证模式 · 不会修改真实账号库", systemImage: "testtube.2")
+                VStack(spacing: 0) {
+                    if model.isRefreshing {
+                        Label(
+                            RefreshPresentation.message(accountCount: model.snapshot.accounts.count),
+                            systemImage: "arrow.triangle.2.circlepath"
+                        )
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.tint)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(.orange.opacity(0.12))
-                        .accessibilityLabel("隔离验证模式，不会修改真实账号库")
+                        .background(.tint.opacity(0.12))
+                        .accessibilityLabel(
+                            RefreshPresentation.message(accountCount: model.snapshot.accounts.count)
+                        )
+                    }
+                    if ProcessInfo.processInfo.environment["HANGAR_TEST_HOME"] != nil {
+                        Label("隔离验证模式 · 不会修改真实账号库", systemImage: "testtube.2")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(.orange.opacity(0.12))
+                            .accessibilityLabel("隔离验证模式，不会修改真实账号库")
+                    }
                 }
             }
             .toolbar {
@@ -61,7 +77,13 @@ struct DashboardView: View {
                     .disabled(model.isBusy || model.isRunningDoctor)
                     .keyboardShortcut("d", modifiers: [.command, .shift])
                     .help("检查账号库、文件权限和 Codex 配置（⇧⌘D）")
-                Button("刷新全部", systemImage: "arrow.clockwise", action: refresh)
+                Button(action: refresh) {
+                    if model.isRefreshing {
+                        Label("刷新中…", systemImage: "arrow.triangle.2.circlepath")
+                    } else {
+                        Label("刷新全部", systemImage: "arrow.clockwise")
+                    }
+                }
                     .disabled(model.isBusy)
                     .keyboardShortcut("r", modifiers: .command)
                     .help("刷新全部账号的周剩余额度（⌘R）")
