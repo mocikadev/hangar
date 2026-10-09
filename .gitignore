@@ -6,3 +6,6 @@
 xcuserdata/
 .superpowers/
 .atomcode/
+
+# Python build/verification helpers
+__pycache__/

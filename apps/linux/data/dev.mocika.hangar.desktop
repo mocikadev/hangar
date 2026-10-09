@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hangar
+Comment=Manage Codex accounts and weekly quota
+Comment[zh_CN]=管理 Codex 账号与周额度
+Exec=hangar-desktop
+Icon=dev.mocika.hangar
+Terminal=false
+Categories=Utility;
+StartupNotify=true

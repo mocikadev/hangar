@@ -2,7 +2,7 @@
 
 > 架构、模块边界与关键机制。场景级风险矩阵见 `scenarios.md`。
 
-> 当前源码已完成原生迁移 Phase 1–2 与 macOS SwiftUI 本机实现；macOS GUI 尚未发布，Linux GTK4/Libadwaita GUI 尚未实现，egui 已删除。原生目标架构见 [`native-gui-migration-plan.md`](native-gui-migration-plan.md)，Linux 主机工作从 [接手说明](linux-native-gui-handoff.md) 开始。
+> 当前源码已完成原生迁移 Phase 1–2 与 macOS SwiftUI 本机实现；macOS GUI 尚未发布，Linux GTK4/Libadwaita GUI 已在 Ubuntu 26.04 x64 实施，完整验收仍开放，egui 已删除。原生目标架构见 [`native-gui-migration-plan.md`](native-gui-migration-plan.md)，Linux 主机工作从 [接手说明](linux-native-gui-handoff.md) 开始。
 
 ## 分层架构
 
@@ -43,7 +43,7 @@
 - TUI 与 classic 共享 `do_login/doctor_lines/switch_account` 等组合函数，不允许复制业务逻辑
 - egui GUI 已从主干删除；已发布 0.6.0 与历史设计文档只作归档
 
-### 原生架构（macOS 已实施，Linux 待实施）
+### 原生架构（macOS / Linux 已实施，分别验收）
 
 ```text
 apps/macos (SwiftUI) -> crates/hangar-uniffi -> crates/hangar-core
@@ -61,7 +61,7 @@ apps/cli (CLI/TUI/classic) ----------------> crates/hangar-core
 - CLI/Core CI 已在 Linux、macOS、Windows runner 执行定向检查；`.github/workflows/native-macos-ci.yml` 已在 macOS runner 跑通 Core/UniFFI、Swift 排序与 Debug/Release App 构建。CI 构建不等于真机交互或已签名发行。
 - `vX.Y.Z` 是 CLI 发布通道，只生成 Linux/macOS 独立二进制，并保持为 GitHub `latest`，供安装脚本和 CLI 自升级使用。
 - 旧 egui GUI 发布工作流已删除；macOS 原生 GUI 使用独立 `macos-gui-vX.Y.Z` 通道，不设为 GitHub `latest`，不触发 CLI 安装脚本或自升级。首个原生版 0.7.0 沿用旧 GUI 的 `dev.mocika.hangar` 与 `Hangar.app`，而 CLI 仍是独立 `hangar` 命令。Linux 阶段在 Linux 主机另定发行入口，不复用三平台 Rust GUI 矩阵。
-- 当前 crate 依赖方向为 `apps/cli → crates/hangar-core` 与 `crates/hangar-uniffi → crates/hangar-core`；桥接不得成为 Core 或 CLI 的反向依赖。
+- 当前 crate 依赖方向为 `apps/{cli,linux} → crates/hangar-core` 与 `crates/hangar-uniffi → crates/hangar-core`；桥接不得成为 Core 或 CLI 的反向依赖。
 
 ### CLI 协议边界
 
@@ -131,3 +131,23 @@ apps/cli (CLI/TUI/classic) ----------------> crates/hangar-core
 
 - 新前端（守护进程/HTTP API）→ 新 crate 依赖 hangar-core
 - 多 CLI 工具支持（cursor/zed 等）→ hangar-core 引入 provider 抽象，account/quota 按 provider 分模块
+
+## Linux 应用边界（2026-09-23）
+
+`apps/linux` 直接依赖 Core；`gtk4=0.11.5` 与 `libadwaita=0.9.2` 只属于该应用。workspace 默认成员保留 Core、CLI、UniFFI，构建 Linux 用 `-p hangar-linux`，全工作区门禁由 `scripts/check-linux.sh` 执行。CLI 普通依赖不包含 GTK。
+
+- `model`：脱敏卡片投影、稳定展示排序与 generation 过滤；不持有 Account/token。
+- `worker` / `worker::refresh`：单一后台线程串行调用 Core；标准库通道传递类型化事件；缓存与推荐调用 Core。取消不打断在途 S11 提交。
+- `login`：后台持有 OAuthLoginSession，处理一次性提交/取消/终态；窗口只得到 URL 和脱敏状态。
+- `ui` / `ui::setup`：主线程控件与事件应用、定时器、单实例恢复与退出。`card`/`dialogs` 只展示摘要及采集操作；`card::presentation` 私有纯函数负责缺字段、缓存状态文案和本地日期的卡片格式，不判断凭据健康或执行 I/O。
+- 显式退出或无状态栏时关闭，阻止新动作并等待 worker Stopped。SNI 已注册时关闭只隐藏，入口丢失会恢复窗口；最小化保留定时刷新。重新激活取消最小化并呈现窗口。
+
+`.github/workflows/native-linux-ci.yml` 只生成构建验证资产；`scripts/package-linux.py` 从 Cargo 消息读取实际产物，生成仅 deb 的本机 Release 包、schema 2 manifest 和完整 SHA；`verify-linux-package.py` 在临时目录验证解包、独立 dpkg 登记/重复解包/移除与可选 GUI 冒烟。未创建公开 GUI 发布通道或标签，不影响 CLI `v*`。详情与剩余项见 [Linux 实施方案](linux-native-gui-plan.md)。
+
+### Linux 任务反馈（2026-10-09）
+
+`model::activity` 管理任务种类、可选目标账号 ID、延迟显示与停止等待，`Model` 以活动任务是否存在推导 busy。worker 使用 Core 缓存规则和现有冷却筛选一次本轮待刷新列表，发送带 generation 的实际总量与已处理量（包括失败）；UI 不从卡片数推算任务数。`ui::feedback` 只更新固定顶部原生 Spinner/文字与停止按钮，不重建卡片；目标卡片消费同一 Activity 显示就近操作文字，终态自动清除，不增加第二个 Spinner。进度单调且受任务代际守卫，终态移除活动任务；停止状态不会被在途进度覆盖。Core 公共 API、存储和线程归属不变。
+
+### Linux 桌面适配（2026-10-09）
+
+`tray` / `tray::menu` 将现有脱敏模型投影为 SNI/DBusMenu，由独立线程调用 ksni blocking API（ksni 内部拥有 Tokio 运行时），最新快照合并更新；后台只发回菜单动作/在线状态，GTK 再检查当前 busy/current/stale。Core/CLI 不引入 ksni。图标在 GTK 线程从共享 SVG 解码，向 SNI 传纯 ARGB 字节。`ui::desktop` 管关闭/隐藏/入口失联恢复和 login1 唤醒订阅，`ui::events` 管类型化成功补刷；成功保存、取消和失败分开，不解析成功文案判断流程。重登目标邮箱来自后台读取的账号记录。手动 QA 保留桌面 bus，账号/应用配置目录隔离且使用唯一应用 ID；无头测试继续使用私有会话。

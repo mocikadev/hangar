@@ -1,0 +1,92 @@
+name: CI · Linux Native GUI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'crates/hangar-core/**'
+      - 'apps/linux/**'
+      - 'resources/shared/**'
+      - 'scripts/*linux*'
+      - 'scripts/tests/test_linux_package.py'
+      - '.github/workflows/native-linux-ci.yml'
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'crates/hangar-core/**'
+      - 'apps/linux/**'
+      - 'resources/shared/**'
+      - 'scripts/*linux*'
+      - 'scripts/tests/test_linux_package.py'
+      - '.github/workflows/native-linux-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin pkg-config desktop-file-utils dpkg-dev binutils xvfb dbus-x11 python3-gi gir1.2-atspi-2.0 gir1.2-adw-1
+      - name: Record pinned runner system libraries
+        run: |
+          cat /etc/os-release
+          uname -m
+          pkg-config --modversion gtk4 libadwaita-1
+      - name: Format, lint and isolated tests
+        run: |
+          cargo fmt --all --check
+          scripts/check-linux.sh
+          git diff --exit-code
+      - name: Headless GTK and desktop protocol tests
+        env:
+          GDK_BACKEND: x11
+        run: |
+          xvfb-run -a scripts/test-linux-layout.sh
+          cargo build --locked -p hangar-linux
+          xvfb-run -a /usr/bin/python3 scripts/test-linux-integration.py
+          xvfb-run -a /usr/bin/python3 scripts/test-linux-theme.py
+      - name: Package verifier regression tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_linux_package.py' -v
+      - name: Build deb and validate isolated Release
+        id: package
+        env:
+          GDK_BACKEND: x11
+        run: |
+          package_dir="$(scripts/package-linux.py)"
+          printf 'directory=%s\n' "$package_dir" >> "$GITHUB_OUTPUT"
+          xvfb-run -a scripts/verify-linux-package.py "$package_dir" --smoke
+          (cd "$package_dir" && sha256sum -c SHA256SUMS.txt)
+      - name: Install and remove deb on disposable runner
+        env:
+          PACKAGE_DIRECTORY: ${{ steps.package.outputs.directory }}
+        run: |
+          sudo apt-get install -y "$PACKAGE_DIRECTORY"/*.deb
+          /usr/bin/hangar-desktop --version
+          test "$(dpkg-query -W -f='${Status}' hangar-desktop)" = 'install ok installed'
+          sudo apt-get purge -y hangar-desktop
+          test ! -e /usr/bin/hangar-desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hangar-desktop-ubuntu-24.04-amd64-deb
+          if-no-files-found: error
+          path: |
+            ${{ steps.package.outputs.directory }}/*.deb
+            ${{ steps.package.outputs.directory }}/SHA256SUMS.txt
+            ${{ steps.package.outputs.directory }}/manifest.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-native-validation-evidence
+          if-no-files-found: warn
+          path: build/linux-qa/
+# Build artifacts only: no tags, release publication or CLI channel changes.

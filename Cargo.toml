@@ -3,7 +3,9 @@ members = [
     "crates/hangar-core",
     "crates/hangar-uniffi",
     "apps/cli",
+    "apps/linux",
 ]
+default-members = ["crates/hangar-core", "crates/hangar-uniffi", "apps/cli"]
 resolver = "2"
 
 [workspace.dependencies]

@@ -20,7 +20,7 @@
 | 自升级 | 用已安装旧版在隔离 HOME/CODEX_HOME 执行正式 Release 升级，核对线上 SHA、原地替换、重复执行与真实配置不变 | 人工/发布后 |
 | 真实凭据链路 | 用户真机操作回报输出（登录/刷新/配额成功路径不可离线模拟） | 用户协同 |
 | macOS 原生 GUI | macOS 主机构建/启动，Swift→UniFFI→Core 调用，SwiftUI、菜单栏与 Dock 交互验收 | macOS 真机 |
-| Linux 原生 GUI（尚未实现） | 按[接手说明](../design/linux-native-gui-handoff.md)在 Linux 主机构建/启动，GTK→Core 调用，真实桌面会话、Wayland/X11 与状态图标验收 | Linux 真机 |
+| Linux 原生 GUI（实现中） | 按[接手说明](../design/linux-native-gui-handoff.md)在 Linux 主机构建/启动，GTK→Core 调用，真实桌面会话、Wayland/X11 与状态图标验收 | Linux 真机 |
 
 ## 已知约束（写测试时必读）
 
@@ -60,3 +60,24 @@ xcodebuild -project apps/macos/Hangar.xcodeproj \
 - [x] JSON 输出不含 token，未知参数/选择歧义/守卫失败具有非零退出码
 - [x] 真机冒烟已做并声明覆盖范围（见 v0.5.0 CLI/TUI 计划验收记录）
 - [x] Linux/macOS/Windows 的 CLI/Core `cfg` 分支至少在对应 runner 完成定向 clippy/test
+
+### Linux 原生应用
+
+- `scripts/check-linux.sh`：空隔离 HOME/CODEX_HOME，按 fmt → clippy → test 执行所有 workspace 包。默认 `cargo test` 不包含 Linux GUI，避免 macOS/CLI 构建被 GTK 阻断。
+- `scripts/run-linux-qa.sh`：从 Cargo 构建消息取 Debug 可执行文件，空隔离配置/独立 D-Bus 会话启动真实桌面窗口，退出删除沙箱。
+- `ui::tests` 的 ignored 测试需图形会话或 Xvfb，验证 8 张纯脱敏展示夹具的宽窄布局、系统深浅主题和焦点保留；夹具不接入 Account/token。随后切回真实空配置验证自检和 OAuth 错误/取消/重启以及原生关闭，不能算真实账号验收。可用 `GDK_BACKEND=x11 xvfb-run -a scripts/test-linux-layout.sh` 复跑。
+- Wayland/X11、输入法/键盘/读屏、OAuth 成功、真实切换等分别记证据，见 [Linux 验证记录](linux-native-gui-validation.md)。
+
+### Linux 主题与状态栏协议
+
+构建 Debug 后，`/usr/bin/python3 scripts/test-linux-integration.py` 在空 HOME/CODEX_HOME 和私有 D-Bus 上启动 GTK 应用及测试 SNI 宿主，检查图标/菜单、关闭隐藏、恢复、入口离线与重连、退出；加 `--real-session` 则只对本次唯一 QA 应用 ID/PID 操作真实桌面注册器，不能用标题匹配其他实例。`scripts/test-linux-theme.py` 使用私有 Settings portal 验证 Libadwaita 动态跟随；`--real-session` 只读比较系统偏好与隔离应用配置下的 StyleManager。它是工具包探针，不替代实际用户切换主题的视觉验收。CI 仅运行私有宿主及 Xvfb，不据此宣称真实桌面通过。
+
+
+### Linux 卡片状态回归（2026-10-09）
+
+GUI 卡片不再要求 AT/RT 展示。`card::presentation` 单测区分首次请求与有缓存刷新、无成功时间、0 张与未知重置卡、周剩余未知但重置卡信息已知、本地日期格式。GTK 聚合测试验证当前/失效菜单入口、目标操作反馈与终态清理、焦点保持、宽窄和深浅主题；时间戳及卡片数据只作为纯展示夹具，不代表服务请求或真实凭据成功。Core 与 CLI/TUI 凭据健康测试继续保留。
+
+
+### Linux deb 验收
+
+`python3 -m unittest discover -s scripts/tests -p 'test_linux_package.py' -v` 验证包/manifest 篡改、缺失或重复校验条目、路径越界和大小不一致的拒绝。`scripts/package-linux.py` 后运行 `scripts/verify-linux-package.py <产物目录> --smoke`：SHA、control/版本/架构、文件白名单/属主/权限、desktop、动态库、独立 dpkg 数据库解包/重复解包/清除、账号与 CLI 保留，以及解包 Release 空配置桌面冒烟。脚本不在宿主安装包；真实 apt 安装/卸载由临时 CI runner 执行，远端结果单独记录。

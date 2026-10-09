@@ -1,7 +1,7 @@
 # 原生 GUI 迁移计划
 
-> 状态：macOS 本机 N16–N25 已完成（N22 按缩减范围收口）；N26/N27 未完成、原生 GUI 未发布。Linux N28–N33 均未开始；到 Linux 主机后先读 [Linux 接手说明](linux-native-gui-handoff.md)（2026-09-23）
-> 当前开发宿主：macOS 27.0 / Apple Silicon（arm64），Xcode 27.0，Swift 6.4
+> 状态：macOS 本机 N16–N25 已完成（N22 按缩减范围收口）；N26/N27 未完成、原生 GUI 未发布。Linux N28–N29 已完成，N30–N31 源码已实现，N32/N33 尚待完整验收；后续先读 [Linux 接手说明](linux-native-gui-handoff.md)（2026-09-23）
+> 当前 Linux 开发宿主：Ubuntu 26.04.1 x86_64 / GNOME 50.1 / Wayland；macOS 前阶段宿主为 macOS 27.0 arm64 / Xcode 27.0。
 > 目标：停止演进 egui 前端，以 Rust 共享核心分别承载 macOS SwiftUI 与 Linux GTK4/Libadwaita 原生应用。
 
 ## 1. 已确认决策
@@ -42,7 +42,7 @@
 |------|----------|----------|------------|
 | macOS arm64 | 当前宿主已检查 | `sw_vers`、`uname -m`、`xcodebuild -version`、macOS SDK、`swift --version`、Rust host | 本机实际完成的构建、运行与交互 |
 | macOS x64 | 未验证 | 对应架构构建环境与真实运行环境 | 只有真实运行后才能宣称可用；交叉编译仅算构建证据 |
-| Linux | 等切换到 Linux 主机 | `/etc/os-release`、CPU、GTK4/Libadwaita、Wayland/X11、可用桌面会话、Rust host | 只记录 Linux 主机实际完成的结果 |
+| Linux | Ubuntu 26.04 x64 / GNOME 50.1 已检查 | `/etc/os-release`、CPU、GTK4/Libadwaita、Wayland/X11、可用桌面会话、Rust host | 只记录 Linux 主机实际完成的结果 |
 | Windows | 不在范围 | — | 不声明支持 |
 
 当前 Mac 环境快照只说明开发机现状，不等于最低系统版本：macOS 27.0（26A428）、arm64、Xcode 27.0（27A266a）、macOS SDK 27.0、Swift 6.4、Rust 1.98.1。最低 macOS 版本应在采用具体 SwiftUI/UniFFI API 前单独决定。
@@ -59,7 +59,7 @@ crates/
 apps/
   cli/                    # CLI / TUI / classic，直接依赖 Core
   macos/                  # SwiftUI / Xcode，仅在 macOS 阶段创建和维护
-  linux/                  # GTK4 / Libadwaita，仅到 Linux 主机后创建
+  linux/                  # GTK4 / Libadwaita，已在 Linux 主机创建
 resources/shared/         # 仅放确实跨端共用的品牌资源
 scripts/                  # 可复现的绑定、构建、打包入口
 build/                    # Xcode/生成绑定/暂存输出，不提交
@@ -100,7 +100,7 @@ apps/cli ----------------------------> hangar-core
 
 - 邮箱；使用中、建议、需重新登录等状态徽标。
 - 周剩余额度（主视觉）、具体重置时间、计划名称、重置卡数量与可用卡最早到期时间；没有可用重置卡时明确显示 0 张，不让卡片高度塌缩。
-- AT 健康与 RT 可续期状态，不显示 token 内容。
+- 不展示 AT/RT 技术状态（2026-10-09 用户调整）；保留当前、推荐、需重新登录等可操作状态。Core 健康判定与守卫保持不变。
 - 主操作“切换”；失效时替换为“重新登录”；删除、诊断等低频操作进入更多菜单。
 
 “建议”采用稳定规则：只考虑非 stale 且周剩余已知的账号；当前账号与最高值相差不超过 10 个百分点时继续建议当前账号。建议只读，不自动切换。
@@ -154,7 +154,7 @@ poll_result / typed completion
 
 ## 5. Linux 阶段交接契约
 
-Linux 阶段**尚未实现**，只在 Linux 主机开始。接手 AI 先读 [Linux 原生 GUI 接手说明](linux-native-gui-handoff.md)完成 N28 环境基线，再按本文共享语义与 N29–N33 实现 GTK4/Libadwaita 原生应用；不能把 macOS 已完成项迁移为 Linux 已完成项。
+Linux 阶段已在 Linux 主机实施；详细任务和未验收范围见 [Linux 实施方案](linux-native-gui-plan.md)。接手 AI 先读 [Linux 原生 GUI 接手说明](linux-native-gui-handoff.md)完成 N28 环境基线，再按本文共享语义与 N29–N33 实现 GTK4/Libadwaita 原生应用；不能把 macOS 已完成项迁移为 Linux 已完成项。
 
 ### 5.1 跨端行为基线
 
@@ -163,7 +163,7 @@ Linux 阶段**尚未实现**，只在 Linux 主机开始。接手 AI 先读 [Lin
 | 行为 | 各端必须一致 | 平台可自行决定 |
 |------|--------------|----------------|
 | 数据身份 | 与 CLI 共用账号库、官方 Codex 配置路径；已有账号直接显示，不另建 GUI 库 | 配置路径诊断的原生呈现方式 |
-| 总览 | 典型 7～8 个账号可直接比较；邮箱、当前/失效/推荐、周剩余、周重置时间、计划、重置卡数量及最早到期、AT/RT 健康可见；未知不显示 0% | 网格列数、卡片尺寸、滚动与视觉样式 |
+| 总览 | 典型 7～8 个账号可直接比较；邮箱、当前/失效/推荐、周剩余、周重置时间、计划、重置卡数量及最早到期可见；不展示 AT/RT 健康；未知不显示 0% | 网格列数、卡片尺寸、滚动与视觉样式 |
 | 排序 | 展示层当前优先、推荐其次、其余按可见周剩余降序（旧缓存仍可参与展示排序，但不能参与推荐）；未知和失效靠后，同值保留账号库顺序；整轮刷新后重排，不在逐卡刷新期间跳位；不改账号库存储顺序 | 原生列表/卡片容器；CLI/TUI 不必照搬 GUI 排序 |
 | 配额与推荐 | 启动先显示共享 `quota-cache.json`；30 分钟有效期内不重复自动查询，到期串行刷新，手动强制刷新；失败保留旧值但标旧/失败且不进入推荐；仅新鲜、非失效、周剩余已知的账号参与 10 个百分点稳定推荐；绝不自动切号 | 前台/驻留计时器和系统唤醒事件接入 |
 | 登录与切换 | 新增账号只入库、不自动切换；定向重新登录只更新该账号，非当前账号不得改官方 `auth.json`；切换必须显式触发并遵守 stale、凭据存储模式与 S11 守卫；成功后提示运行中的 Codex 重启 | OAuth 浏览器、手工回调、确认和错误提示的原生控件 |
@@ -228,10 +228,10 @@ N26 仍未完成：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥�
 
 ### Phase 5：Linux 原生应用（切换到 Linux 主机后执行）
 
-- [ ] N28 记录 Linux 发行版、架构、GTK4/Libadwaita、桌面会话和 Wayland/X11 基线
-- [ ] N29 创建 `apps/linux` crate；直接依赖 Core，不使用 UniFFI
-- [ ] N30 依据共享卡片语义实现 GTK4/Libadwaita 仪表盘和平台原生菜单
-- [ ] N31 实现后台任务、generation 过滤、切换、OAuth、自检和 Linux 生命周期
+- [x] N28 记录 Linux 发行版、架构、GTK4/Libadwaita、桌面会话和 Wayland/X11 基线
+- [x] N29 创建 `apps/linux` crate；直接依赖 Core，不使用 UniFFI
+- [ ] N30 依据共享卡片语义实现 GTK4/Libadwaita 仪表盘和平台原生菜单（源码与展示夹具验证完成，真实卡片验收待补）
+- [ ] N31 实现后台任务、generation 过滤、切换、OAuth、自检和 Linux 生命周期（源码及空配置链路完成，真实切换/OAuth 成功待补）
 - [ ] N32 在目标 Linux 桌面真机验证 7～8 账号、窗口、键盘/输入法、状态图标及退出
 - [ ] N33 建立 Linux 专属 CI/打包/依赖基线并生成可追溯发行物
 
@@ -243,7 +243,7 @@ N26 仍未完成：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥�
 - Phase 2 的桥接不得成为 Core 或 CLI 的反向依赖；删除 `hangar-uniffi` 后 CLI 仍应正常构建。
 - Phase 3 每完成一个纵向能力都需有可运行应用：账号快照 → 配额 → 推荐 → 切换 → 生命周期 → OAuth，避免最后才发现桥接不可用。
 - 删除 egui 不删除已发布的 0.6.0 资产；需要临时使用旧 GUI 时从已发布版本或 Git 历史获取，不在主干恢复双 GUI 维护。
-- macOS 完成不代表 Linux 完成；Linux 阶段所有复选项保持未完成，直到 Linux 主机给出新鲜证据。
+- macOS 完成不代表 Linux 完成；Linux 阶段复选项只依据 Linux 主机新鲜证据更新。
 
 ### Phase 1 验证记录（2026-09-22，macOS arm64）
 
@@ -324,3 +324,16 @@ N26 仍未完成：本机具备 `notarytool`、`codesign`、`hdiutil`，但钥�
 5. 切换、刷新、OAuth 继续满足 S11、白名单、脱敏和原子写约束。
 6. 关闭窗口、驻留、Dock/状态图标、恢复和退出在目标平台逐项实测。
 7. 报告明确区分已构建、已运行、已交互验证和未验证平台/架构。
+
+## 2026-10-09 桌面反馈审计后续
+
+Linux 已实施任务分类、实际刷新数量、延迟显示和停止等待反馈，详见 [F01–F05](linux-native-gui-plan.md#2026-10-09-桌面反馈审计后续) 与 [验证记录](../quality/linux-native-gui-validation.md)。不改变 N32 的真实账号与完整桌面验收状态。macOS 刷新提示当前使用全部卡片数量，可能包含 stale 或有效缓存而被跳过的账号；M01 保持开放，须在 Mac 宿主修改文案/计数并验收。
+
+## 2026-10-09 Linux 桌面补齐
+
+实施方案 D01–D05 补齐主题预览会话、登录成功补刷、目标重登提示、可选 SNI 状态栏和 login1 唤醒检查。SNI 在线时关闭隐藏、入口丢失恢复窗口；无 SNI 时关闭安全退出；菜单“退出”始终结束进程。该策略替代首版 Linux 无托盘设计，但不强制安装扩展。实际主题与桌面无凭据验收见 Linux 验证记录，真实账号/实际休眠/读屏仍保留未验状态。
+
+
+## 2026-10-09 Linux 个人 deb 构建
+
+用户冻结 UI 后将交付范围限定为个人 Ubuntu 使用的 deb，不提供 AppImage/tar.gz；早期 tar.gz 只保留历史验证记录。独立包名 `hangar-desktop`，Core/CLI/账号目录不变。任务与门禁见 Linux 方案 P01–P06；本机构建、远端 Ubuntu 24.04 CI 与实际安装分别记录，不因此关闭 N32/N33 父项。

@@ -5,12 +5,12 @@
 ## 项目概览
 
 **hangar** — OpenAI Codex 多账号管理 CLI/TUI/GUI 工具：免重复登录地在多个 ChatGPT 账号间切换，官方 `auth.json` 为唯一权威，本工具负责缓存、收敛与投影。
-当前状态：**v0.7.0 CLI/TUI 已发布**；egui GUI 源码已移除，已发布的 0.6.0 仅作历史版本保留。macOS 原生 GUI 已完成本机 Release 配置的只读隔离冒烟，尚未签名公证或发布；**Linux 原生 GUI 尚未实现**，下一阶段必须到 Linux 主机从 N28 开始。
+当前状态：**v0.7.0 CLI/TUI 已发布**；egui GUI 源码已移除，已发布的 0.6.0 仅作历史版本保留。macOS 原生 GUI 已完成本机 Release 配置的只读隔离冒烟，尚未签名公证或发布；**Linux 原生 GUI 已在 Ubuntu 26.04 x64 实施**，真实账号与完整桌面验收仍开放；进度见 Linux 实施方案。
 
 ## 技术栈
 
-- 当前：Rust 2021（Cargo workspace：`crates/hangar-core` + `crates/hangar-uniffi` + `apps/cli`）与 `apps/macos` SwiftUI/Xcode 工程
-- 待实现：`apps/linux`（Rust + GTK4/Libadwaita，直接依赖 Core）仅到 Linux 主机后创建；Windows 延后
+- 当前：Rust 2021（Cargo workspace：`crates/hangar-core` + `crates/hangar-uniffi` + `apps/cli` + `apps/linux`）与 `apps/macos` SwiftUI/Xcode 工程
+- Linux：`apps/linux`（Rust + gtk4-rs/Libadwaita，直接依赖 Core），命令 `hangar-desktop`；Windows 延后
 - 前端：ratatui + crossterm（TUI）；HTTP：ureq；本地回调：tiny_http
 - 无 chrono：时间格式化用 civil_from_days + libc `localtime_r`
 
@@ -41,6 +41,8 @@ cargo test                                 # 3. 全部单测（core + cli）
 ```
 
 > ⚠️ 顺序不可颠倒：未 `cargo fmt` 先跑 `clippy -- -D warnings` 会因格式问题失败。
+
+Linux 前端变更额外运行 `scripts/check-linux.sh`（隔离 HOME/CODEX_HOME，包含 Linux 包）；默认 Cargo 成员不包含 GTK 前端，以保持 CLI/macOS 构建独立。
 
 ## 关键约束
 
@@ -75,7 +77,9 @@ cargo test              # 单测（core + cli）
 | v0.6.0 CLI/TUI 计划 | `docs/design/v0.6.0-cli-tui-plan.md` |
 | v0.7.0 周额度推荐计划 | `docs/design/v0.7.0-weekly-recommendation-plan.md` |
 | 原生 GUI 迁移计划（目录重构、macOS/Linux 分阶段） | `docs/design/native-gui-migration-plan.md` |
-| Linux 原生 GUI 接手说明（未实现，从 N28 开始） | `docs/design/linux-native-gui-handoff.md` |
+| Linux 原生 GUI 接手说明与进度入口 | `docs/design/linux-native-gui-handoff.md` |
+| Linux 实施方案与任务 | `docs/design/linux-native-gui-plan.md` |
+| Linux 验证记录 | `docs/quality/linux-native-gui-validation.md` |
 | v0.5.0 发布说明 | `docs/releases/v0.5.0.md` |
 | v0.7.0 发布说明 | `docs/releases/v0.7.0.md` |
 
