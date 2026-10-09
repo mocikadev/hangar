@@ -76,10 +76,10 @@
 - [ ] 经单独授权，在隔离真实账号副本验收 7～8 卡片、缓存/刷新/推荐、切换、OAuth 成功和重登；不足账号或无法执行的项目保持开放。
 
 ### N33 构建与交付
-- [x] Linux 专属 CI 配置，固定 Ubuntu 24.04，Core/CLI 保持独立（尚未远端执行）。
+- [x] Linux 专属 CI 配置，固定 Ubuntu 24.04，Core/CLI 保持独立（2026-10-09 远端运行通过，见 P06）。
 - [x] 桌面入口、图标、安装/卸载说明，GUI 不覆盖 hangar CLI。
 - [x] 从 Cargo 构建消息取真实产物，打包并回读 ELF、系统依赖、版本与 SHA，生成清单。
-- [x] 本机包解压启动、单实例、退出和 SHA 回读；远端 CI 与跨发行版验收保持未验证。
+- [x] 本机包解压启动、单实例、退出和 SHA 回读；远端 CI 已通过；跨发行版完整桌面验收仍开放。
 - [x] 同步 Spec、架构、接手说明、迁移计划、README 和验证记录。
 
 ## 回退与验收边界
@@ -88,7 +88,7 @@
 
 ## 本轮验证入口
 
-[Linux 验证记录](../quality/linux-native-gui-validation.md)记录命令、范围与未验项。`scripts/check-linux.sh` 运行完整隔离门禁；`scripts/test-linux-desktop.py` 执行空窗口/单实例/退出冒烟；`GDK_BACKEND=x11 xvfb-run -a scripts/test-linux-layout.sh` 执行无头 GTK 布局与对话框测试；`scripts/run-linux-qa.sh` 供人工查看空隔离窗口；`scripts/package-linux.py` 构建本地验证包。源码和无凭据交付不等于 N32 真实账号或 N33 远端/发行验收完成。
+[Linux 验证记录](../quality/linux-native-gui-validation.md)记录命令、范围与未验项。`scripts/check-linux.sh` 运行完整隔离门禁；`scripts/test-linux-desktop.py` 执行空窗口/单实例/退出冒烟；`GDK_BACKEND=x11 xvfb-run -a scripts/test-linux-layout.sh` 执行无头 GTK 布局与对话框测试；`scripts/run-linux-qa.sh` 供人工查看空隔离窗口；`scripts/package-linux.py` 构建本地验证包。源码和无凭据交付不等于 N32 真实账号或 N33 公开发行验收完成（远端 CI 已单独通过）。
 
 ## 2026-10-09 桌面反馈审计后续
 
@@ -179,6 +179,6 @@ D01–D05 本机无凭据验证已完成，证据见 [2026-10-09 主题与状态
 - [x] P03 deb 隔离解包、登记/移除与内容回归。
 - [x] P04 CI 接入资产验收、Release 冒烟与 runner 安装回归。
 - [x] P05 本机实际打包、隔离启动验收，文档与证据同步。
-- [ ] P06 远端 Ubuntu 24.04 CI 实际通过；未推送/运行前不勾选。
+- [x] P06 远端 Ubuntu 24.04 CI 实际通过：[运行 37884056743](https://github.com/mocikadev/hangar/actions/runs/37884056743)，包含 deb 构建/隔离启动/apt 安装及卸载；下载产物 SHA/来源与本机 Wayland 复验通过。
 
-本轮不安装覆盖本机程序，不改运行中的真实账号预览。实际宿主 apt 安装、其他 CPU/发行版、正式签名与公开发布保持独立验收。
+后续用户已授权并完成本机 apt 安装及远端 CI，证据见 Linux 验证记录“本机安装与远端 CI”。其他 CPU/发行版完整桌面、正式签名与公开发布保持独立验收。

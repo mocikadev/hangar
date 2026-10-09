@@ -115,3 +115,28 @@ N28/N29 可关闭；N30/N31 已有源码和无凭据证据，但真实链路仍�
 最终产物：`dist/linux/20261009T041645719774Z/hangar-desktop_0.7.0-1_amd64.deb`（1,402,330 bytes），SHA-256 `8d137296db451430c5479d76031b3a4f2ed43aac7311e3114f10c3d22be46b3c`。旁附 manifest schema 2 与 SHA256SUMS。构建为未签名、本地未提交源码（dirty）候选，不是公开 Release；本次未安装、提交、推送或发布。
 
 日志：`build/linux-qa/package-{baseline,check,tests,build,verify,apt-simulate}.log`；机器可读验收记录 `build/linux-qa/package-20261009T041645719774Z.json`。正式宿主安装、远端 CI、跨发行版/arm64、真实账号成功链路仍按各自范围验收。
+
+
+## 2026-10-09 本机安装与远端 CI
+
+用户明确授权本机安装及远端 CI，包含为运行 CI 所需的提交和推送。已将此前 Linux 源码/验证脚本/打包配置一起提交为 `c01aeb7` 并推送到 main；未打标签或发布 Release。
+
+本机 `sudo apt-get install` 安装 `hangar-desktop 0.7.0-1 amd64` 成功，之前未安装该包，无旧安装需要备份。安装文件来自上一节 SHA 为 `8d137296db451430c5479d76031b3a4f2ed43aac7311e3114f10c3d22be46b3c` 的 deb；已回读 dpkg `install ok installed`、程序版本与 desktop 校验，并比较安装后二进制和 deb 内容一致。包管理器完成 desktop、图标和 GNOME 菜单更新触发器。可用 `sudo apt remove hangar-desktop` 撤销安装，账号数据和 CLI 保留。
+
+`/usr/bin/hangar-desktop` 在空 HOME/CODEX_HOME、私有 D-Bus、真实 Wayland 会话中通过启动/单实例/退出。随后使用真实桌面入口启动，D-Bus peer 的 `/proc/PID/exe` 确认为 `/usr/bin/hangar-desktop`，正常账号配置延续此前用户授权。此步骤不代表所有真实账号操作已验收；自动测试仍一律隔离。
+
+推送前隔离门禁：109 项 Rust 测试及 5 项包校验测试通过。日志保存在 `build/linux-qa/local-install.log`、`installed-smoke.log`、`installed-launcher.log` 和 `prepush-*.log`。远端运行与产物回读结果续记于下方。
+
+
+远端首次 Linux 运行 [37883512876](https://github.com/mocikadev/hangar/actions/runs/37883512876) 的格式/lint/单测与 GTK 布局通过，但 SNI 集成测试因 Ubuntu 24.04 runner 缺 `at-spi2-core` 而失败，随后异常清理遇到残留进程写入缓存。修复提交 `9fa4ccf` 显式安装 AT-SPI/fuse3，测试启动前验证无障碍服务，并在父进程最终清理中终止仅属于本次 QA 的独立进程组。没有修改应用 UI 或凭据逻辑。
+
+修复后本机 Xvfb 私有 SNI 全流程与 109 项 Rust 测试通过；额外在私有 D-Bus 隐藏服务目录，验证缺 AT-SPI 时在创建应用前失败且临时目录清理成功。日志 `ci-fix-integration.log`、`ci-fix-check.log`、`no-a11y-service.log` 保存在 build/linux-qa。
+
+同一应用源码提交 `c01aeb7` 的 [CLI/Core CI](https://github.com/mocikadev/hangar/actions/runs/37883512840) 与 [macOS CI](https://github.com/mocikadev/hangar/actions/runs/37883512858) 均通过；后者是 CI 构建证据，不替代 Mac 实机 UI 验收。
+
+
+最终 Linux [运行 37884056743](https://github.com/mocikadev/hangar/actions/runs/37884056743) 全部通过，源码为 `9fa4ccf`：Ubuntu 24.04.5 x86_64、GTK 4.14.5 / Libadwaita 1.5.0 / GLib 2.80.0，格式/lint/隔离测试、GTK/SNI/主题测试、包校验、Release deb 构建、Xvfb 解包启动、runner apt 实际安装与 purge、资产上传全部成功。P06 已关闭；不扩展为真实账号或所有 Linux 桌面通过。
+
+已下载远端产物到 `build/ci/37884056743/package/`，manifest 为 clean source、原生 GNU x64 Release。deb 为 1,407,160 bytes，SHA-256 `431755c34fcecabc2f7233b4a08abd23e5d1486b720c55ccccf0dba0d22bdfa6`。对下载产物重新执行完整包验证与本机 Ubuntu 26.04 Wayland 空配置冒烟均通过；不覆盖已安装的本机构建包。最终源码与工作流提交已推送，无 GUI tag/Release。
+
+远端完整日志与结构化步骤保存在 `build/linux-qa/ci-linux-success.{log,json}`；产物回读日志 `remote-package-verify.log`，结构化回读证据 `package-20261009T043304530667Z.json`。本机安装的是上一节本机构建的 0.7.0-1；远端产物另行保留作可复核的 CI 构建证据。
