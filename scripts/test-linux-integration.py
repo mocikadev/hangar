@@ -7,6 +7,7 @@ never changes desktop settings. Default uses a private D-Bus host to test host l
 import argparse
 import os
 import pathlib
+import signal
 import subprocess
 import sys
 import tempfile
@@ -33,18 +34,37 @@ if not args.child:
             pathlib.Path(env['XDG_RUNTIME_DIR']).mkdir(mode=0o700)
         command = ['/usr/bin/python3', __file__, '--child']
         command = command+['--real-session'] if args.real_session else ['dbus-run-session', '--']+command
+        session = subprocess.Popen(command, env=env, start_new_session=True)
         try:
-            result = subprocess.run(command, env=env, timeout=90)
+            result = session.wait(timeout=90)
         finally:
+            # A fatal native-library error can bypass the child's Python finally.
+            # Terminate only this QA process group before deleting its empty HOME.
+            try:
+                os.killpg(session.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                session.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                os.killpg(session.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            session.wait()
             if not args.real_session:
                 for name in ('doc', 'gvfs'):
                     subprocess.run(['fusermount3', '-u', '-z', home+'/runtime/'+name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        sys.exit(result.returncode)
+        sys.exit(result)
 
 import gi
 gi.require_version('Atspi', '2.0')
 from gi.repository import Atspi, Gio, GLib
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+# Fail before spawning the app if the minimal runner lacks the AT-SPI service.
+bus.call_sync('org.a11y.Bus', '/org/a11y/bus', 'org.a11y.Bus', 'GetAddress',
+              None, None, Gio.DBusCallFlags.NONE, 5000, None)
 watcher_name = 'org.kde.StatusNotifierWatcher'
 watcher_path = '/StatusNotifierWatcher'
 registered = []

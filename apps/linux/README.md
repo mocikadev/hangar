@@ -55,7 +55,7 @@ scripts/verify-linux-package.py dist/linux/<build-id>
 GDK_BACKEND=wayland scripts/verify-linux-package.py dist/linux/<build-id> --smoke
 ```
 
-验收脚本只在临时目录解包、使用独立 dpkg 数据库登记/重复解包/移除并检查 CLI 与账号目录保留，不绕过本机 apt 依赖或安装到系统；这与完整系统安装验收分别记录。图形验证需要 python3-gi、gir1.2-atspi-2.0、dbus-x11。
+验收脚本只在临时目录解包、使用独立 dpkg 数据库登记/重复解包/移除并检查 CLI 与账号目录保留，不绕过本机 apt 依赖或安装到系统；这与完整系统安装验收分别记录。图形验证需要 python3-gi、gir1.2-atspi-2.0、dbus-x11、at-spi2-core、fuse3。
 
 ## 安装、升级与卸载
 
